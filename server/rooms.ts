@@ -4,7 +4,9 @@ import { defaultDictionary } from '../src/engine/dictionary'
 import { createGame, type Game } from '../src/engine/engine'
 import { resolvePuzzle, type ScheduleConfig } from '../src/engine/schedule'
 import type { GameState, HintReveal } from '../src/engine/types'
-import { MAX_PLAYERS, cleanName, type RoomView } from '../src/net/protocol'
+import { TIME_LIMITS } from '../src/engine/engine'
+import { currentSlot } from '../src/engine/schedule'
+import { MAX_PLAYERS, ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH, cleanName, type RoomView } from '../src/net/protocol'
 import { registry } from '../src/rules'
 
 export interface PlayerRecord {
@@ -63,6 +65,36 @@ export function playableRule(ruleId: string) {
   const rule = registry.get(ruleId)
   if (!rule || (schedule as ScheduleConfig).flags[ruleId] === false) return undefined
   return rule
+}
+
+/** A random room code from an alphabet with no look-alikes (no 0/O, 1/I/L). */
+export function randomCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(ROOM_CODE_LENGTH))
+  return Array.from(bytes, (b) => ROOM_CODE_ALPHABET[b % ROOM_CODE_ALPHABET.length]).join('')
+}
+
+/** Validates a create request and builds the new room's record. */
+export function newRoomRecord(code: string, ruleId: unknown, minutes: unknown, now: number): { record: RoomRecord } | { error: string } {
+  const rule = playableRule(String(ruleId ?? ''))
+  if (!rule) return { error: 'Unknown rule' }
+  const m = minutes == null ? null : Number(minutes)
+  if (m !== null && !(TIME_LIMITS as readonly number[]).includes(m)) return { error: 'Pick 4, 5 or 10 minutes' }
+  const record: RoomRecord = {
+    code,
+    ruleId: rule.id,
+    ruleVersion: rule.version,
+    slot: currentSlot(now),
+    createdAt: now,
+    players: [],
+    guesses: [],
+    hints: [],
+    turn: null,
+    timeLimit: m ? m * 60_000 : null,
+    deadline: null,
+    ended: null,
+  }
+  new Room(record) // fail fast if the puzzle can't be built
+  return { record }
 }
 
 /**
@@ -152,6 +184,11 @@ export class Room {
     if (!p || !clean || p.name === clean) return false
     p.name = clean
     return true
+  }
+
+  /** Counts a socket as connected without side effects (rebuilding state after hibernation). */
+  markOnline(playerId: string) {
+    this.online.set(playerId, (this.online.get(playerId) ?? 0) + 1)
   }
 
   /** A socket for this player opened. Returns true if the turn or clock changed. */

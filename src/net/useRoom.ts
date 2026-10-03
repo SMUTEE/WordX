@@ -29,8 +29,9 @@ export interface RoomApi {
 const GUESS_TIMEOUT_MS = 8000
 const FATAL = new Set(['not-found', 'expired', 'full', 'identity', 'corrupt'])
 
-function socketUrl() {
-  return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`
+/** The room is in the URL so Cloudflare can route the connection straight to that game. */
+function socketUrl(code: string) {
+  return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?room=${encodeURIComponent(code)}`
 }
 
 /**
@@ -70,7 +71,7 @@ export function useRoom(code: string, me: Me, enabled: boolean): RoomApi {
     let pingTimer: number | undefined
 
     const connect = () => {
-      const s = new WebSocket(socketUrl())
+      const s = new WebSocket(socketUrl(code))
       ws.current = s
       s.onopen = () => {
         attempt = 0

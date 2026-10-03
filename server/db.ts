@@ -95,37 +95,24 @@ export class Store {
     }
   }
 
-  savePlayer(code: string, p: PlayerRecord, now: number) {
+
+
+
+
+  /** Writes the whole room in one transaction. Rooms are tiny (≤ 8 players, ≤ 8 guesses). */
+  saveRecord(r: RoomRecord, now = Date.now()) {
     this.tx(() => {
       this.db
-        .prepare(
-          `INSERT INTO players (room_code, id, name, secret_hash, seat, joined_at) VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT (room_code, id) DO UPDATE SET name = excluded.name`,
-        )
-        .run(code, p.id, p.name, p.secretHash, p.seat, p.joinedAt)
-      this.touch(code, now)
+        .prepare('UPDATE rooms SET turn = ?, deadline = ?, ended = ?, hints = ?, updated_at = ? WHERE code = ?')
+        .run(r.turn, r.deadline, r.ended ? JSON.stringify(r.ended) : null, JSON.stringify(r.hints), now, r.code)
+      const player = this.db.prepare(
+        `INSERT INTO players (room_code, id, name, secret_hash, seat, joined_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (room_code, id) DO UPDATE SET name = excluded.name`,
+      )
+      for (const p of r.players) player.run(r.code, p.id, p.name, p.secretHash, p.seat, p.joinedAt)
+      const guess = this.db.prepare('INSERT OR IGNORE INTO guesses (room_code, idx, word, player_id, client_id, at) VALUES (?, ?, ?, ?, ?, ?)')
+      r.guesses.forEach((g, i) => guess.run(r.code, i, g.word, g.playerId, g.clientId, g.at))
     })
-  }
-
-  /** A guess and the turn change it causes are written together, or not at all. */
-  saveGuess(code: string, idx: number, g: GuessRecord, turn: string | null) {
-    this.tx(() => {
-      this.db
-        .prepare('INSERT INTO guesses (room_code, idx, word, player_id, client_id, at) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(code, idx, g.word, g.playerId, g.clientId, g.at)
-      this.db.prepare('UPDATE rooms SET turn = ?, updated_at = ? WHERE code = ?').run(turn, g.at, code)
-    })
-  }
-
-  saveHints(code: string, hints: RoomRecord['hints'], now: number) {
-    this.db.prepare('UPDATE rooms SET hints = ?, updated_at = ? WHERE code = ?').run(JSON.stringify(hints), now, code)
-  }
-
-  /** Turn, clock and ending, which change together. */
-  saveState(code: string, r: Pick<RoomRecord, 'turn' | 'deadline' | 'ended'>, now: number) {
-    this.db
-      .prepare('UPDATE rooms SET turn = ?, deadline = ?, ended = ?, updated_at = ? WHERE code = ?')
-      .run(r.turn, r.deadline, r.ended ? JSON.stringify(r.ended) : null, now, code)
   }
 
   /** Deletes rooms untouched since `before`. Returns how many went. */
@@ -142,9 +129,7 @@ export class Store {
     this.db.close()
   }
 
-  private touch(code: string, now: number) {
-    this.db.prepare('UPDATE rooms SET updated_at = ? WHERE code = ?').run(now, code)
-  }
+
 
   private tx(fn: () => void) {
     this.db.exec('BEGIN')

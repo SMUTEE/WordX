@@ -1,0 +1,19 @@
+{
+  // WordX on Cloudflare: the app as static assets, the API in a Worker, one Durable Object per friends game.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wordx",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/ws"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "RoomObject" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RoomObject"] }],
+  "observability": { "enabled": true }
+}

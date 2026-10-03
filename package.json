@@ -13,7 +13,9 @@
     "dev:web": "vite",
     "dev:api": "tsx watch server/index.ts",
     "start": "NODE_ENV=production tsx server/index.ts",
-    "record": "npm run build && tsx scripts/record.ts"
+    "record": "npm run build && tsx scripts/record.ts",
+    "cf:dev": "npm run build && wrangler dev --port 8788",
+    "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
     "motion": "^14.0.0",
