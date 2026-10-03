@@ -1,0 +1,26 @@
+# Fly.io: `fly launch --copy-config --no-deploy`, then `fly volumes create wordx_data --size 1`, then `fly deploy`.
+app = "wordx"
+primary_region = "lhr"
+
+[build]
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  WORDX_DB = "/data/wordx.db"
+
+[[mounts]]
+  source = "wordx_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "3s"
+    method = "GET"
+    path = "/api/health"
