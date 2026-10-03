@@ -1,5 +1,5 @@
 import { COMMON_ANSWERS } from '../data/words'
-import { nthOfPermutation } from '../engine/random'
+import { nthOfPermutation, saltedKey } from '../engine/random'
 import type { GameRule } from '../engine/types'
 
 /** Y is always a consonant on Vowel day. */
@@ -30,7 +30,7 @@ export const vowel: GameRule = {
     motion: 'lock',
   },
 
-  pickAnswer: ({ occurrence }) => ({ entry: nthOfPermutation(POOL, 'vowel', occurrence) }),
+  pickAnswer: ({ occurrence, salt }) => ({ entry: nthOfPermutation(POOL, saltedKey('vowel', salt), occurrence) }),
 
   setup(puzzle) {
     const locked: Record<number, string> = {}

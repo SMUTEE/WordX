@@ -1,6 +1,6 @@
 import { CATEGORIES, type Category } from '../data/categories'
 import type { WordEntry } from '../data/words'
-import { hashString, shuffled } from '../engine/random'
+import { hashString, nthOfPermutation, saltedKey, shuffled } from '../engine/random'
 import type { GameRule } from '../engine/types'
 
 export interface PoolItem {
@@ -61,9 +61,10 @@ export const category: GameRule = {
     motion: 'stamp',
   },
 
-  pickAnswer({ occurrence }) {
+  pickAnswer({ occurrence, salt }) {
     const pool = categoryPool()
-    const item = pool[((occurrence % pool.length) + pool.length) % pool.length]
+    // With a salt (live drops) the order is a secret shuffle; without one it walks the spread-out queue.
+    const item = salt ? nthOfPermutation(pool, saltedKey('category', salt), occurrence) : pool[((occurrence % pool.length) + pool.length) % pool.length]
     return { entry: item.entry, meta: { categoryId: item.categoryId } }
   },
 

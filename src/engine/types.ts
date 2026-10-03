@@ -88,6 +88,8 @@ export interface PickContext {
   /** How many times this rule has been scheduled before `date`. Drives non-repeating answers. */
   occurrence: number
   dictionary: Dictionary
+  /** A server-only secret mixed into every shuffle, so drop answers can't be computed from the app's code. */
+  salt?: string
 }
 
 export interface PuzzleContext {

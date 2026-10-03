@@ -4,6 +4,19 @@ import { defineConfig } from 'vite'
 // The game server runs on :8787 in development; Vite forwards API and WebSocket traffic to it.
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        // Word lists and libraries change rarely; keeping them in their own files means an app
+        // update doesn't make returning players re-download 200 KB of words.
+        manualChunks(id: string) {
+          if (id.includes('/src/data/')) return 'words'
+          if (id.includes('node_modules/react') || id.includes('node_modules/scheduler')) return 'react'
+          if (id.includes('node_modules/motion') || id.includes('node_modules/framer-motion') || id.includes('node_modules/motion-')) return 'motion'
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     strictPort: true,

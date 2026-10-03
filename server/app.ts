@@ -2,7 +2,9 @@ import { createReadStream, existsSync, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { extname, join, normalize, resolve } from 'node:path'
 import { WebSocketServer, type WebSocket } from 'ws'
-import { normalizeCode, type ClientMessage, type CreateRoomRequest } from '../src/net/protocol'
+import { normalizeCode, type ClientMessage, type CreateRoomRequest, type DropPlay } from '../src/net/protocol'
+import { dropInfo, playDrop } from './drop'
+import { PROFILE_MAX_BYTES, applyLoad, applySave, checkProfileRequest, type ProfileRequest } from './profiles'
 import { Store } from './db'
 import { Hub, type Peer } from './hub'
 import { Room, RoomError, newRoomRecord, randomCode } from './rooms'
@@ -14,6 +16,8 @@ export interface ServerOptions {
   staticDir?: string
   /** Seconds a turn holder may be away before the turn moves on. */
   turnGraceSeconds?: number
+  /** Secret mixed into daily-drop answers. Set WORDX_DROP_SALT in production. */
+  dropSalt?: string
   log?: (...args: unknown[]) => void
 }
 
@@ -63,6 +67,7 @@ export function startServer(opts: ServerOptions): { server: Server; close(): Pro
   const lives = new Map<string, Live>()
   const createHits = new Map<string, number[]>()
   const grace = (opts.turnGraceSeconds ?? 20) * 1000
+  const salt = opts.dropSalt ?? 'dev-drop-salt'
 
   // ---------- Rooms in memory ----------
 
@@ -112,13 +117,13 @@ export function startServer(opts: ServerOptions): { server: Server; close(): Pro
     res.end(JSON.stringify(body))
   }
 
-  function readBody(req: IncomingMessage): Promise<string> {
+  function readBody(req: IncomingMessage, limit = MAX_BODY): Promise<string> {
     return new Promise((ok, fail) => {
       let size = 0
       const chunks: Buffer[] = []
       req.on('data', (c: Buffer) => {
         size += c.length
-        if (size > MAX_BODY) {
+        if (size > limit) {
           fail(new Error('too-large'))
           req.destroy()
         } else chunks.push(c)
@@ -139,6 +144,41 @@ export function startServer(opts: ServerOptions): { server: Server; close(): Pro
   async function handleApi(req: IncomingMessage, res: ServerResponse, path: string) {
     if (req.method === 'GET' && path === '/api/health') {
       return json(res, 200, { ok: true, live: lives.size, ...store.stats() })
+    }
+
+    if (path === '/api/drop' && req.method === 'GET') {
+      const r = dropInfo(new URL(req.url ?? '/', 'http://local').searchParams.get('slot'), salt)
+      return 'error' in r ? json(res, r.status, { error: r.error }) : json(res, 200, r)
+    }
+    if (path === '/api/drop/play' && req.method === 'POST') {
+      let body: DropPlay
+      try {
+        body = JSON.parse((await readBody(req)) || '{}')
+      } catch {
+        return json(res, 400, { error: 'Bad request' })
+      }
+      const r = playDrop(body, salt)
+      return 'error' in r ? json(res, r.status, { error: r.error }) : json(res, 200, r)
+    }
+
+    if (req.method === 'POST' && (path === '/api/profile/save' || path === '/api/profile/load')) {
+      let body: Partial<ProfileRequest>
+      try {
+        body = JSON.parse((await readBody(req, PROFILE_MAX_BYTES + 512)) || '{}')
+      } catch {
+        return json(res, 400, { error: 'Bad request' })
+      }
+      const check = checkProfileRequest(body)
+      if (!check.ok) return json(res, check.status, { error: check.error })
+      const existing = store.loadProfile(check.id)
+      if (path.endsWith('/save')) {
+        const r = applySave(existing, check.secret, body.data, Date.now())
+        if ('error' in r) return json(res, r.status, { error: r.error })
+        store.saveProfile(check.id, r.record)
+        return json(res, 200, { ok: true, updatedAt: r.record.updatedAt })
+      }
+      const r = applyLoad(existing, check.secret)
+      return 'error' in r ? json(res, r.status, { error: r.error }) : json(res, 200, r)
     }
 
     if (req.method === 'POST' && path === '/api/rooms') {

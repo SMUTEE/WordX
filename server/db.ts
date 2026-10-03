@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import type { ProfileRecord } from './profiles'
 import type { GuessRecord, PlayerRecord, RoomRecord } from './rooms'
 
 /**
@@ -45,6 +46,12 @@ export class Store {
         UNIQUE (room_code, client_id)
       );
       CREATE INDEX IF NOT EXISTS rooms_updated ON rooms(updated_at);
+      CREATE TABLE IF NOT EXISTS profiles (
+        id TEXT PRIMARY KEY,
+        secret_hash TEXT NOT NULL,
+        data TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
     `)
     // Migrations: add columns introduced after a database was first created.
     const columns = (this.db.prepare('PRAGMA table_info(rooms)').all() as { name: string }[]).map((c) => c.name)
@@ -113,6 +120,20 @@ export class Store {
       const guess = this.db.prepare('INSERT OR IGNORE INTO guesses (room_code, idx, word, player_id, client_id, at) VALUES (?, ?, ?, ?, ?, ?)')
       r.guesses.forEach((g, i) => guess.run(r.code, i, g.word, g.playerId, g.clientId, g.at))
     })
+  }
+
+  loadProfile(id: string): ProfileRecord | null {
+    const row = this.db.prepare('SELECT * FROM profiles WHERE id = ?').get(id) as Record<string, unknown> | undefined
+    return row ? { secretHash: String(row.secret_hash), data: String(row.data), updatedAt: Number(row.updated_at) } : null
+  }
+
+  saveProfile(id: string, r: ProfileRecord) {
+    this.db
+      .prepare(
+        `INSERT INTO profiles (id, secret_hash, data, updated_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
+      )
+      .run(id, r.secretHash, r.data, r.updatedAt)
   }
 
   /** Deletes rooms untouched since `before`. Returns how many went. */

@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useId, useState } from 'react'
 import type { PlayerView } from '../../net/protocol'
+import { nameProblem } from '../../net/protocol'
 import { share } from '../share'
 import { POSTER } from '../theme'
 import { ChunkyButton, PosterWord } from './Bits'
@@ -10,6 +11,7 @@ const playerColor = (seat: number) => POSTER[(seat + 1) % (POSTER.length - 1)]
 
 export function NameField({ value, onChange, autoFocus }: { value: string; onChange(v: string): void; autoFocus?: boolean }) {
   const id = useId()
+  const problem = value.trim() ? nameProblem(value) : null
   return (
     <label className="name-field" htmlFor={id}>
       <span className="name-label">Your name</span>
@@ -22,7 +24,14 @@ export function NameField({ value, onChange, autoFocus }: { value: string; onCha
         placeholder="Tolu"
         autoFocus={autoFocus}
         onChange={(e) => onChange(e.target.value)}
+        aria-invalid={!!problem}
+        aria-describedby={problem ? `${id}-err` : undefined}
       />
+      {problem && (
+        <span className="name-error" id={`${id}-err`} role="alert">
+          {problem}
+        </span>
+      )}
     </label>
   )
 }

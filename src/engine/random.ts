@@ -43,3 +43,6 @@ export function nthOfPermutation<T>(items: readonly T[], poolKey: string, n: num
   const order = shuffled(items, hashString(`${poolKey}#${cycle}`))
   return order[n % items.length]
 }
+
+/** A shuffle key, secret-salted when a salt is given. */
+export const saltedKey = (key: string, salt?: string) => (salt ? `${key}~${salt}` : key)

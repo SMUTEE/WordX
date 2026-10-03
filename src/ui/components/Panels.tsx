@@ -7,10 +7,10 @@ import type { WordEntry } from '../../data/words'
 import type { Feedback, GameState, Hint, HintReveal, LegendSwatch, RulePresentation } from '../../engine/types'
 import { METER_SECONDS, PRESETS, type MotionPreset } from '../motion/presets'
 import { share, shareText } from '../share'
-import { liveStreak, type Stats as StatsData } from '../storage'
+import { liveStreak, loadContrast, saveContrast, type Stats as StatsData } from '../storage'
 import { starsFor } from '../../journey/progress'
-import { BAND, INK, MARK_BG } from '../theme'
-import { ChunkyButton, PosterWord } from './Bits'
+import { applyContrast, BAND, INK, MARK_BG } from '../theme'
+import { ChunkyButton, PosterWord, Toggle } from './Bits'
 import { Meter, Tile } from './Tile'
 
 /** The rule's worked example, replaying its signature motion on a loop. */
@@ -393,8 +393,15 @@ function Stats({ stats, bars, top, mine, today }: { stats: StatsData; bars: numb
   )
 }
 
-export function HelpPanel({ game, preset, rules }: { game: Game; preset: MotionPreset; rules: { id: string; name: string; bg: string }[] }) {
+export function HelpPanel({ game, preset, rules, onSettings }: { game: Game; preset: MotionPreset; rules: { id: string; name: string; bg: string }[]; onSettings?(): void }) {
   const p = game.rule.presentation
+  const [contrast, setContrast] = useState(loadContrast)
+  const toggleContrast = (on: boolean) => {
+    setContrast(on)
+    saveContrast(on)
+    applyContrast(on)
+    onSettings?.()
+  }
   return (
     <div className="help">
       <span className="kicker">Today’s rule</span>
@@ -407,6 +414,7 @@ export function HelpPanel({ game, preset, rules }: { game: Game; preset: MotionP
       </ol>
       <ExampleRow word={p.example.word} feedback={p.example.feedback} preset={preset} size={40} />
       <p className="help-caption">{p.example.caption}</p>
+      <Toggle label="Colour-blind mode" hint="Orange and blue instead of green and yellow, with shape markers" on={contrast} onChange={toggleContrast} />
       <hr className="rule" />
       <span className="kicker">How WordX works</span>
       <ol className="help-list">

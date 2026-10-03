@@ -1,5 +1,5 @@
 import { COMMON_ANSWERS } from '../data/words'
-import { hashString, nthOfPermutation } from './random'
+import { hashString, nthOfPermutation, saltedKey } from './random'
 import type { RuleRegistry } from './registry'
 import type { Dictionary, Puzzle } from './types'
 
@@ -86,19 +86,21 @@ export interface ResolveOptions {
   dictionary: Dictionary
   /** Play a specific rule in this drop (practice — not counted in stats). */
   forceRuleId?: string
-  /** A private variant of the puzzle with its own answer, e.g. a relay between friends. */
+  /** A private variant of the puzzle with its own answer, e.g. a friends game. */
   variant?: string
+  /** Server-only secret for live drops: without it, nobody can compute the answer. */
+  salt?: string
 }
 
 /** drop + rule + version → the same puzzle, every time, on every device. */
-export function resolvePuzzle({ slot, schedule, registry, dictionary, forceRuleId, variant }: ResolveOptions): Puzzle {
+export function resolvePuzzle({ slot, schedule, registry, dictionary, forceRuleId, variant, salt }: ResolveOptions): Puzzle {
   const scheduledId = ruleIdForSlot(slot, schedule, registry)
   const ruleId = forceRuleId ?? scheduledId
   const rule = registry.get(ruleId)
   if (!rule) throw new ScheduleError(`Unknown rule "${ruleId}"`)
 
   const key = `${variant ? `v:${variant}` : slot}|${rule.id}@${rule.version}`
-  const seed = hashString(key)
+  const seed = hashString(saltedKey(key, salt))
   const occurrence = variant
     ? hashString(variant) % 100_000
     : forceRuleId && forceRuleId !== scheduledId
@@ -108,8 +110,8 @@ export function resolvePuzzle({ slot, schedule, registry, dictionary, forceRuleI
 
   const pick = (n: number): { entry: Puzzle['answer']; meta?: Puzzle['meta'] } =>
     rule.pickAnswer
-      ? rule.pickAnswer({ date, seed, occurrence: n, dictionary })
-      : { entry: nthOfPermutation(COMMON_ANSWERS, `common:${rule.id}`, n) }
+      ? rule.pickAnswer({ date, seed, occurrence: n, dictionary, salt })
+      : { entry: nthOfPermutation(COMMON_ANSWERS, saltedKey(`common:${rule.id}`, salt), n) }
   // The intro's worked example must never be the real answer.
   let picked = pick(occurrence)
   for (let skip = 1; picked.entry.word === rule.presentation.example.word && skip < 10; skip++) picked = pick(occurrence + skip * 997)

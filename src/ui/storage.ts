@@ -142,3 +142,6 @@ export function streakSummary(today = localDay()): StreakSummary {
 
 export const hasOnboarded = () => read<boolean>('onboarded') === true
 export const markOnboarded = () => write('onboarded', true)
+
+export const loadContrast = () => read<boolean>('contrast') === true
+export const saveContrast = (on: boolean) => write('contrast', on)

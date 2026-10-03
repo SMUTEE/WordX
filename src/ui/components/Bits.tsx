@@ -154,3 +154,18 @@ export function Sheet({ open, onClose, children, label }: { open: boolean; onClo
     </AnimatePresence>
   )
 }
+
+/** An accessible on/off switch with a label and a short explanation. */
+export function Toggle({ label, hint, on, onChange }: { label: string; hint?: string; on: boolean; onChange(v: boolean): void }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} className={`toggle${on ? ' toggle-on' : ''}`} onClick={() => onChange(!on)}>
+      <span className="toggle-text">
+        <strong>{label}</strong>
+        {hint && <small>{hint}</small>}
+      </span>
+      <span className="toggle-track" aria-hidden="true">
+        <span className="toggle-thumb" />
+      </span>
+    </button>
+  )
+}

@@ -3,6 +3,8 @@ import { WebSocket } from 'ws'
 import type { RoomView, ServerMessage } from '../src/net/protocol'
 import { startServer } from './app'
 import { Room, type RoomRecord } from './rooms'
+import { dropGame } from './drop'
+import { addSlots } from '../src/engine/schedule'
 
 const PORT = 18_787
 let app: ReturnType<typeof startServer>
@@ -182,6 +184,76 @@ describe('co-op server', () => {
   })
 })
 
+describe('daily drop on the server', () => {
+  const post = (body: object) =>
+    fetch(`http://localhost:${PORT}/api/drop/play`, { method: 'POST', body: JSON.stringify(body) }).then(async (r) => ({ status: r.status, body: await r.json() }))
+
+  it('serves the drop without its answer, and scores words', async () => {
+    const info = await (await fetch(`http://localhost:${PORT}/api/drop`)).json()
+    expect(info.view.answer).toBeUndefined()
+    expect(info.view.setup.length).toBeGreaterThanOrEqual(4)
+    const slot = info.view.slot
+    // The server knows the answer; the test reads it the same way the server does.
+    const answer = dropGame(slot, 'dev-drop-salt').puzzle.answer.word
+    const filler = answer === 'CRANE' ? 'SLATE' : 'CRANE'
+    const len = info.view.setup.length
+    const first = len === 5 ? filler : answer.split('').reverse().join('')
+    const r1 = await post({ slot, words: [first], hintsAfter: [] })
+    if (!r1.body.rejected) {
+      expect(r1.body.view.guesses).toHaveLength(1)
+      expect(r1.body.view.answer).toBeUndefined()
+    }
+    const r2 = await post({ slot, words: [answer], hintsAfter: [] })
+    expect(r2.body.view.status).toBe('won')
+    expect(r2.body.view.answer.word).toBe(answer)
+  })
+
+  it('reports the refused word and applies nothing after it', async () => {
+    const r = await post({ words: ['QWXZY'], hintsAfter: [] })
+    expect(r.body.rejected).toMatchObject({ index: 0 })
+    expect(r.body.view.guesses).toHaveLength(0)
+  })
+
+  it('reveals the word when you give up', async () => {
+    const r = await post({ words: [], hintsAfter: [], end: 'gave-up' })
+    expect(r.body.view).toMatchObject({ status: 'lost', endReason: 'gave-up' })
+    expect(r.body.view.answer.word).toBeTruthy()
+  })
+
+  it('never serves a future drop', async () => {
+    const r = await post({ slot: '2099-01-01T00', words: [], hintsAfter: [] })
+    expect(r.status).toBe(404)
+  })
+
+  it('a different secret picks different words', () => {
+    let differ = 0
+    for (let i = 0; i < 12; i++) {
+      const slot = addSlots('2026-09-01T00', i)
+      if (dropGame(slot, 'secret-a').puzzle.answer.word !== dropGame(slot, 'secret-b').puzzle.answer.word) differ++
+    }
+    expect(differ).toBeGreaterThan(8)
+  })
+})
+
+describe('progress backups', () => {
+  const call = (path: string, body: object) =>
+    fetch(`http://localhost:${PORT}/api/profile/${path}`, { method: 'POST', body: JSON.stringify(body) }).then(async (r) => ({ status: r.status, body: await r.json() }))
+  const me = { id: 'backupuser1', secret: 'backup-secret-0123456789' }
+
+  it('saves and restores progress with the save code', async () => {
+    expect((await call('load', me)).status).toBe(404)
+    expect((await call('save', { ...me, data: { journey: { unlocked: 7 } } })).status).toBe(200)
+    const r = await call('load', me)
+    expect(r.body.data.journey.unlocked).toBe(7)
+  })
+
+  it('refuses the wrong secret, both ways', async () => {
+    const wrong = { id: me.id, secret: 'not-the-right-secret-xx' }
+    expect((await call('load', wrong)).status).toBe(403)
+    expect((await call('save', { ...wrong, data: {} })).status).toBe(403)
+  })
+})
+
 describe('room rules', () => {
   const record = (): RoomRecord => ({ code: 'TESTAA', ruleId: 'standard', ruleVersion: 1, slot: '2026-10-03T06', createdAt: 0, players: [], guesses: [], hints: [], turn: null, timeLimit: null, deadline: null, ended: null })
 
@@ -230,6 +302,13 @@ describe('room rules', () => {
     other.connect('p1aaaa')
     expect(other.giveUp('p1aaaa')).toBe(true)
     expect(new Room(structuredClone(other.record)).view().endReason).toBe('gave-up')
+  })
+
+  it('never shows an offensive name to other players', () => {
+    const room = new Room(record())
+    room.join('p1aaaa', 'secret-secret-secret', 'sh1t head', 0)
+    room.join('p2aaaa', 'secret-secret-secret', 'Odeyemi', 0)
+    expect(room.view().players.map((p) => p.name)).toEqual(['Player', 'Odeyemi'])
   })
 
   it('caps players', () => {

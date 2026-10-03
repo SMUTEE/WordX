@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Game } from '../engine/engine'
 import type { GameState } from '../engine/types'
 import type { GuessResult } from '../net/useRoom'
+import { scheduleBackup } from '../net/sync'
 import type { MotionPreset } from './motion/presets'
 import { loadSession, recordActivity, recordResult, saveSession, type Stats, loadStats } from './storage'
 
@@ -32,8 +33,11 @@ export interface RemoteSource {
   lockedReason?: string
   /** Ask the server for a hint; it arrives with the next board. */
   hint(): void
-  /** Give up for the whole team. */
+  /** Give up (for the whole team, in co-op). */
   giveUp(): void
+  /** Solo games scored remotely run their own clock: start it, and report when it runs out. */
+  startTimer?(minutes: number): void
+  timeUp?(): void
 }
 
 export interface GameOptions {
@@ -50,6 +54,7 @@ export function useGame(game: Game, preset: MotionPreset, options: GameOptions =
       if (finishedRef.current) return
       finishedRef.current = true
       recordActivity(next.status === 'won')
+      scheduleBackup()
       setStats(recordResult(game.puzzle, next))
       setFinishedNow(true)
       onFinished?.(next)
@@ -225,7 +230,7 @@ export function useGame(game: Game, preset: MotionPreset, options: GameOptions =
 
   const startTimer = useCallback(
     (minutes: number) => {
-      if (remote) return
+      if (remote) return remote.startTimer?.(minutes)
       setState((s) => {
         const next = game.withTimer(s, minutes)
         saveSession(next)
@@ -238,13 +243,18 @@ export function useGame(game: Game, preset: MotionPreset, options: GameOptions =
   // The clock: a solo game ends the moment it runs out; the server ends co-op games.
   const deadline = state.deadline
   const playing = state.status === 'playing'
+  const timeUp = remote?.timeUp
   useEffect(() => {
-    if (!deadline || !playing || remote) return
+    if (!deadline || !playing || (remote && !timeUp)) return
+    let fired = false
     const t = window.setInterval(() => {
-      if (Date.now() >= deadline) end('time')
+      if (fired || Date.now() < deadline) return
+      fired = true
+      if (timeUp) timeUp()
+      else end('time')
     }, 250)
     return () => window.clearInterval(t)
-  }, [deadline, playing, remote, end])
+  }, [deadline, playing, remote, timeUp, end])
 
   // Physical keyboard.
   useEffect(() => {

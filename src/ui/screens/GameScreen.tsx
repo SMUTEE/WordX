@@ -1,5 +1,5 @@
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Game } from '../../engine/engine'
 import type { Me } from '../../net/identity'
 import type { RoomApi } from '../../net/useRoom'
@@ -15,10 +15,12 @@ import { hasSeenHelp, loadTimerPref, markSeenHelp, saveTimerPref } from '../stor
 import { Clock, GiveUpPanel, TimerPicker } from '../components/Clock'
 import type { LevelDef } from '../../journey/levels'
 import type { GameState } from '../../engine/types'
+import type { WordEntry } from '../../data/words'
 import { inkColor, softInk } from '../theme'
 import { useGame, type RemoteSource } from '../useGame'
 import { roomToState } from '../../net/roomState'
 import { joinNames } from '../format'
+import { describeGuess } from '../announce'
 import { Chrome, TopBar } from './Chrome'
 
 export interface LevelProps {
@@ -37,7 +39,13 @@ export interface CoopProps {
 }
 
 /** The game itself — the same screen for solo drops and co-op rooms. */
-export function GameScreen({ game, coop, level }: { game: Game; coop?: CoopProps; level?: LevelProps }) {
+export interface DropProps {
+  source: RemoteSource
+  /** Sent by the server once the game is over. */
+  answer?: WordEntry
+}
+
+export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: CoopProps; level?: LevelProps; drop?: DropProps }) {
   const { rule, puzzle, setup } = game
   const p = rule.presentation
   const preset = PRESETS[p.motion]
@@ -60,9 +68,10 @@ export function GameScreen({ game, coop, level }: { game: Game; coop?: CoopProps
         onTyping: myTurn ? coop.api.sendTyping : undefined,
         lockedReason: !connected ? 'Reconnecting…' : !myTurn ? (turnPlayer ? `It’s ${turnPlayer.name}’s turn` : 'Waiting for players') : undefined,
       }
-    : undefined
+    : drop?.source
 
   const g = useGame(game, preset, { remote, onFinished: level?.onFinished })
+  const answer = room?.answer ?? drop?.answer ?? puzzle.answer
   const [timerPick, setTimerPick] = useState(loadTimerPref)
   const home = level ? '/journey' : '/'
   const fresh = g.state.guesses.length === 0
@@ -92,6 +101,22 @@ export function GameScreen({ game, coop, level }: { game: Game; coop?: CoopProps
   }
 
   const closeSheet = useCallback(() => setSheet('none'), [])
+  // Settings like colour-blind mode change colours read at render; bump to redraw.
+  const [, setSettingsTick] = useState(0)
+
+  // Screen readers hear each guess once its reveal has played.
+  const [announcement, setAnnouncement] = useState('')
+  const announced = useRef(g.state.guesses.length)
+  useEffect(() => {
+    if (g.revealingRow !== null) return
+    const n = g.display.guesses.length
+    if (n <= announced.current) return
+    announced.current = n
+    const last = g.display.guesses[n - 1]
+    const by = room ? room.guesses[n - 1] && (room.guesses[n - 1].playerId === you ? undefined : room.players.find((x) => x.id === room.guesses[n - 1].playerId)?.name) : undefined
+    const outcome = g.state.status === 'won' ? ' Solved!' : g.state.status === 'lost' ? ` Out of tries. The word was ${answer.word}.` : ` ${setup.maxGuesses - n} tries left.`
+    setAnnouncement(describeGuess(last, by) + outcome)
+  }, [g.revealingRow, g.display.guesses, g.state.status, room, you, answer.word, setup.maxGuesses])
   const { say } = g
   const notice = coop?.api.notice
   useEffect(() => {
@@ -291,7 +316,7 @@ export function GameScreen({ game, coop, level }: { game: Game; coop?: CoopProps
                         ? `Solved together in ${g.state.guesses.length} of ${setup.maxGuesses} tries.`
                         : `Solved in ${g.state.guesses.length} of ${setup.maxGuesses} tries.`
                       : endLine}
-                    {g.state.status === 'lost' && <strong className="done-answer">{(room?.answer ?? puzzle.answer).word}</strong>}
+                    {g.state.status === 'lost' && <strong className="done-answer">{answer.word}</strong>}
                   </p>
                   <ChunkyButton onClick={() => setSheet('result')} variant="paper">
                     See results
@@ -303,12 +328,15 @@ export function GameScreen({ game, coop, level }: { game: Game; coop?: CoopProps
         </AnimatePresence>
       </LayoutGroup>
 
+      <p className="sr-only" aria-live="polite" role="status">
+        {announcement}
+      </p>
       {(phase === 'intro' || sheet !== 'none') && <ToastHost toast={g.toast} onDone={clearToast} />}
       {g.finishedNow && g.state.status === 'won' && <Confetti seed={puzzle.seed} />}
       <Sheet open={sheet === 'result'} onClose={closeSheet} label="Results">
         <ResultPanel
           game={game}
-          answer={room?.answer}
+          answer={room?.answer ?? drop?.answer}
           state={g.state}
           stats={g.stats}
           preset={preset}
@@ -318,7 +346,7 @@ export function GameScreen({ game, coop, level }: { game: Game; coop?: CoopProps
         />
       </Sheet>
       <Sheet open={sheet === 'help'} onClose={closeSheet} label="How to play">
-        <HelpPanel game={game} preset={preset} rules={practice} />
+        <HelpPanel game={game} preset={preset} rules={practice} onSettings={() => setSettingsTick((n) => n + 1)} />
       </Sheet>
       {coop && room && (
         <Sheet open={sheet === 'invite'} onClose={closeSheet} label="Invite friends">

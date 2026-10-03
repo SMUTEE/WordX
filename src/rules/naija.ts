@@ -1,5 +1,5 @@
 import { NAIJA_WORDS } from '../data/words'
-import { nthOfPermutation } from '../engine/random'
+import { nthOfPermutation, saltedKey } from '../engine/random'
 import type { GameRule } from '../engine/types'
 
 export const naija: GameRule = {
@@ -24,7 +24,7 @@ export const naija: GameRule = {
     motion: 'drum',
   },
 
-  pickAnswer: ({ occurrence }) => ({ entry: nthOfPermutation(NAIJA_WORDS, 'naija', occurrence) }),
+  pickAnswer: ({ occurrence, salt }) => ({ entry: nthOfPermutation(NAIJA_WORDS, saltedKey('naija', salt), occurrence) }),
 
   setup: () => ({ hint: { kind: 'language', label: 'Pidgin and Yoruba', prompt: 'Today’s language' } }),
 

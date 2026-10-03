@@ -1,5 +1,5 @@
 import { COMMON_ANSWERS, type WordEntry } from '../data/words'
-import { nthOfPermutation, shuffled } from '../engine/random'
+import { nthOfPermutation, saltedKey, shuffled } from '../engine/random'
 import type { Dictionary, GameRule } from '../engine/types'
 
 const signature = (word: string) => [...word].sort().join('')
@@ -39,8 +39,8 @@ export const anagram: GameRule = {
     motion: 'spin',
   },
 
-  pickAnswer({ occurrence, dictionary }) {
-    return { entry: nthOfPermutation(uniqueAnagramAnswers(dictionary), 'anagram', occurrence) }
+  pickAnswer({ occurrence, dictionary, salt }) {
+    return { entry: nthOfPermutation(uniqueAnagramAnswers(dictionary), saltedKey('anagram', salt), occurrence) }
   },
 
   setup(puzzle) {

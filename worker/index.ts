@@ -1,5 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
-import { normalizeCode, type ClientMessage, type CreateRoomRequest, type ServerMessage } from '../src/net/protocol'
+import { normalizeCode, type ClientMessage, type CreateRoomRequest, type DropPlay, type ServerMessage } from '../src/net/protocol'
+import { dropInfo, playDrop } from '../server/drop'
+import { PROFILE_MAX_BYTES, applyLoad, applySave, checkProfileRequest, type ProfileRecord, type ProfileRequest } from '../server/profiles'
 import { Hub, type Peer } from '../server/hub'
 import { Room, RoomError, newRoomRecord, randomCode, type RoomRecord } from '../server/rooms'
 
@@ -10,7 +12,10 @@ import { Room, RoomError, newRoomRecord, randomCode, type RoomRecord } from '../
  */
 export interface Env {
   ROOMS: DurableObjectNamespace<RoomObject>
+  PROFILES: DurableObjectNamespace<ProfileObject>
   ASSETS: Fetcher
+  /** Secret for daily-drop answers: `npx wrangler secret put DROP_SALT`. */
+  DROP_SALT?: string
 }
 
 const GRACE_MS = 20_000
@@ -30,6 +35,40 @@ export default {
     const path = url.pathname
 
     if (path === '/api/health') return json(200, { ok: true, runtime: 'cloudflare' })
+
+    if (path === '/api/drop' && request.method === 'GET') {
+      if (!env.DROP_SALT) return json(503, { error: 'Daily drop isn’t configured yet' })
+      const r = dropInfo(url.searchParams.get('slot'), env.DROP_SALT)
+      return 'error' in r ? json(r.status, { error: r.error }) : json(200, r)
+    }
+    if (path === '/api/drop/play' && request.method === 'POST') {
+      if (!env.DROP_SALT) return json(503, { error: 'Daily drop isn’t configured yet' })
+      const text = await request.text()
+      if (text.length > MAX_BODY) return json(413, { error: 'Too large' })
+      let body: DropPlay
+      try {
+        body = JSON.parse(text || '{}')
+      } catch {
+        return json(400, { error: 'Bad request' })
+      }
+      const r = playDrop(body, env.DROP_SALT)
+      return 'error' in r ? json(r.status, { error: r.error }) : json(200, r)
+    }
+
+    if ((path === '/api/profile/save' || path === '/api/profile/load') && request.method === 'POST') {
+      const text = await request.text()
+      if (text.length > PROFILE_MAX_BYTES + 512) return json(413, { error: 'Too large' })
+      let body: Partial<ProfileRequest>
+      try {
+        body = JSON.parse(text || '{}')
+      } catch {
+        return json(400, { error: 'Bad request' })
+      }
+      const check = checkProfileRequest(body)
+      if (!check.ok) return json(check.status, { error: check.error })
+      const stub = env.PROFILES.get(env.PROFILES.idFromName(check.id))
+      return stub.fetch(`https://profile/${path.endsWith('/save') ? 'save' : 'load'}`, { method: 'POST', body: JSON.stringify(body) })
+    }
 
     if (path === '/api/rooms' && request.method === 'POST') {
       const text = await request.text()
@@ -202,5 +241,21 @@ export class RoomObject extends DurableObject<Env> {
     }
     await this.hub?.tick()
     await this.wakeAt(touched + ROOM_TTL_MS)
+  }
+}
+
+/** One player's progress backup. */
+export class ProfileObject extends DurableObject<Env> {
+  async fetch(request: Request): Promise<Response> {
+    const body = (await request.json()) as ProfileRequest
+    const existing = (await this.ctx.storage.get<ProfileRecord>('profile')) ?? null
+    if (new URL(request.url).pathname === '/save') {
+      const r = applySave(existing, body.secret, body.data, Date.now())
+      if ('error' in r) return json(r.status, { error: r.error })
+      await this.ctx.storage.put('profile', r.record)
+      return json(200, { ok: true, updatedAt: r.record.updatedAt })
+    }
+    const r = applyLoad(existing, body.secret)
+    return 'error' in r ? json(r.status, { error: r.error }) : json(200, r)
   }
 }

@@ -7,6 +7,7 @@ import { registry } from './rules'
 import { ChunkyButton, PosterWord } from './ui/components/Bits'
 import { navigate, useRoute } from './ui/router'
 import { GameScreen } from './ui/screens/GameScreen'
+import { DropScreen } from './ui/screens/DropScreen'
 import { Home } from './ui/screens/Home'
 import { JourneyMap, LevelScreen } from './ui/screens/Journey'
 import { RoomScreen } from './ui/screens/RoomScreen'
@@ -39,7 +40,8 @@ export default function App() {
   if (route.name === 'journey') return <JourneyMap />
   if (route.name === 'level') return <LevelScreen key={route.n} n={route.n} />
   if (!game) return <ErrorScreen />
-  if (route.name === 'play') return <GameScreen key={game.puzzle.id} game={game} />
+  // The live drop is scored on the server; ?rule= / ?slot= / ?date= are local practice games.
+  if (route.name === 'play') return /[?&](rule|slot|date)=/.test(location.search) ? <GameScreen key={game.puzzle.id} game={game} /> : <DropScreen />
   return <Home game={game} />
 }
 

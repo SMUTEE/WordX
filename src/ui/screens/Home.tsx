@@ -5,16 +5,18 @@ import { msUntilNextDrop } from '../../engine/schedule'
 import { LEVEL_COUNT, levelDef } from '../../journey/levels'
 import { journeyComplete, loadJourney, totalStars } from '../../journey/progress'
 import { getMe, saveMe } from '../../net/identity'
+import { restoreFromCode, saveCode, scheduleBackup } from '../../net/sync'
 import { normalizeCode, ROOM_CODE_LENGTH } from '../../net/protocol'
 import { checkRoom, createRoom } from '../../net/useRoom'
 import { registry } from '../../rules'
-import { ChunkyButton, PosterWord, Sheet, ToastHost } from '../components/Bits'
+import { ChunkyButton, PosterWord, Sheet, Toggle, ToastHost } from '../components/Bits'
 import { CreateGamePanel, NameField } from '../components/Coop'
 import { HelpPanel, ResultPanel } from '../components/Panels'
 import { formatDrop } from '../format'
 import { PRESETS } from '../motion/presets'
 import { navigate } from '../router'
-import { hasOnboarded, loadSession, loadStats, markOnboarded, streakSummary } from '../storage'
+import { hasOnboarded, loadContrast, loadSession, loadStats, markOnboarded, saveContrast, streakSummary } from '../storage'
+import { applyContrast } from '../theme'
 import type { Toast } from '../useGame'
 import { Chrome } from './Chrome'
 
@@ -35,6 +37,61 @@ function useDropCountdown() {
 
 const NextTag = () => <span className="next-tag">Up next</span>
 
+/** Your save code, and restoring progress from another device's code. */
+function SaveCodePanel({ onToast }: { onToast(t: string): void }) {
+  const [show, setShow] = useState(false)
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const mine = saveCode()
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(mine)
+      onToast('Save code copied. Keep it somewhere private')
+    } catch {
+      onToast('Couldn’t copy. Select the code instead')
+    }
+  }
+  const restore = async () => {
+    setBusy(true)
+    const r = await restoreFromCode(code)
+    setBusy(false)
+    if (!r.ok) return onToast(r.error)
+    location.reload()
+  }
+  return (
+    <div className="save-code">
+      <span className="kicker">Keep your progress</span>
+      <p className="result-note">
+        Your progress is backed up after every game. To play on another phone, enter this save code there. Treat it like a password.
+      </p>
+      {show ? (
+        <code className="save-code-value" aria-label="Your save code">
+          {mine}
+        </code>
+      ) : (
+        <button type="button" className="link-btn" onClick={() => setShow(true)}>
+          Show my save code
+        </button>
+      )}
+      {show && (
+        <ChunkyButton onClick={copy} variant="paper">
+          Copy save code
+        </ChunkyButton>
+      )}
+      <label className="name-field" htmlFor="restore-code">
+        <span className="name-label">Got a code from another device?</span>
+        <input id="restore-code" className="name-input" value={code} onChange={(e) => setCode(e.target.value)} placeholder="WX-…" autoComplete="off" spellCheck={false} />
+      </label>
+      {code.trim() && (
+        <>
+          <p className="result-note">This replaces the progress on this device with the progress behind the code.</p>
+          <ChunkyButton onClick={restore}>{busy ? 'Restoring…' : 'Restore my progress'}</ChunkyButton>
+        </>
+      )}
+    </div>
+  )
+}
+
 function greeting(name: string) {
   const h = new Date().getHours()
   const part = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
@@ -51,6 +108,7 @@ export function Home({ game }: { game: Game }) {
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
+  const [contrast, setContrast] = useState(loadContrast)
   const say = (text: string) => setToast(text ? { id: Date.now(), text } : null)
 
   const streak = streakSummary()
@@ -75,6 +133,7 @@ export function Home({ game }: { game: Game }) {
     const nextMe = { ...me, name }
     setMe(nextMe)
     saveMe({ ...nextMe, name: name.trim() })
+    scheduleBackup()
   }
 
   const finishWelcome = () => {
@@ -291,7 +350,17 @@ export function Home({ game }: { game: Game }) {
               </div>
             ))}
           </div>
-          <p className="result-note">Your progress is saved on this device.</p>
+          <Toggle
+            label="Colour-blind mode"
+            hint="Orange and blue instead of green and yellow, with shape markers"
+            on={contrast}
+            onChange={(on) => {
+              setContrast(on)
+              saveContrast(on)
+              applyContrast(on)
+            }}
+          />
+          <SaveCodePanel onToast={say} />
         </div>
       </Sheet>
       <Sheet open={sheet === 'create'} onClose={() => setSheet('none')} label="Play with friends">

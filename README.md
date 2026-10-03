@@ -21,7 +21,19 @@ npm run record   # re-record the demo clips into recordings/ (uses your installe
 - Guesses carry an id, so a retry after a dropped connection never counts twice. Clients reconnect with backoff and resync from the server's snapshot.
 - Messages are rate-limited, payloads capped, dead sockets dropped by heartbeat, and rooms untouched for 14 days are deleted.
 
-### Deploying
+### Deploying to Cloudflare (free plan)
+
+The app, API, live rooms (one Durable Object per game) and progress backups all run on Cloudflare's free plan.
+
+```bash
+npx wrangler login                      # once
+npx wrangler secret put DROP_SALT       # once: any long random string; keeps daily-drop answers secret
+npm run deploy                          # build + deploy
+```
+
+`npm run cf:dev` runs the same thing locally on Cloudflare's runtime (uses `.dev.vars` for the salt).
+
+### Deploying with Docker (any host)
 
 Any host that runs a Docker container with a persistent disk works (Fly.io, Render, Railway). The app and the server ship together:
 
@@ -30,7 +42,7 @@ docker build -t wordx .
 docker run -p 8080:8080 -v wordx-data:/data wordx
 ```
 
-Environment: `PORT` (default 8080 in the image), `WORDX_DB` (default `/data/wordx.db`). Mount a volume at `/data` or games are lost on redeploy. WebSockets must be allowed (they are by default on those hosts). `GET /api/health` reports status.
+Environment: `PORT` (default 8080 in the image), `WORDX_DB` (default `/data/wordx.db`), `WORDX_DROP_SALT` (required in production — keeps daily-drop answers secret). Mount a volume at `/data` or games are lost on redeploy. WebSockets must be allowed (they are by default on those hosts). `GET /api/health` reports status.
 
 Preview any rule with `?rule=fog` (also `standard`, `category`, `anagram`, `decay`, `vowel`, `naija`, `liar`) and any drop with `?slot=2026-10-05T12` (or `?date=2026-10-05` for that day's first drop). Previews are marked "Practice" and never touch your stats.
 

@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { startServer } from './app'
 
 const production = process.env.NODE_ENV === 'production'
+if (production && !process.env.WORDX_DROP_SALT) console.warn('WORDX_DROP_SALT is not set: daily-drop answers are guessable from the app code.')
 const dist = resolve(import.meta.dirname, '../dist')
 
 const app = startServer({
@@ -11,6 +12,7 @@ const app = startServer({
   dbPath: process.env.WORDX_DB ?? resolve(import.meta.dirname, '../data/wordx.db'),
   // In production the same process serves the built app; in development Vite does.
   staticDir: production && existsSync(dist) ? dist : undefined,
+  dropSalt: process.env.WORDX_DROP_SALT,
 })
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

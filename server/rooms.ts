@@ -6,7 +6,7 @@ import { resolvePuzzle, type ScheduleConfig } from '../src/engine/schedule'
 import type { GameState, HintReveal } from '../src/engine/types'
 import { TIME_LIMITS } from '../src/engine/engine'
 import { currentSlot } from '../src/engine/schedule'
-import { MAX_PLAYERS, ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH, cleanName, type RoomView } from '../src/net/protocol'
+import { MAX_PLAYERS, ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH, safeName, type RoomView } from '../src/net/protocol'
 import { registry } from '../src/rules'
 
 export interface PlayerRecord {
@@ -161,7 +161,7 @@ export class Room {
 
   /** Adds a new player or re-admits a returning one. Returns the player if anything changed. */
   join(playerId: string, secret: string, name: string, now: number): { ok: true; changed: boolean } | { ok: false; code: string; message: string } {
-    const clean = cleanName(name) || 'Player'
+    const clean = safeName(name)
     const existing = this.player(playerId)
     if (existing) {
       if (existing.secretHash !== hashSecret(secret)) {
@@ -180,8 +180,8 @@ export class Room {
 
   rename(playerId: string, name: string): boolean {
     const p = this.player(playerId)
-    const clean = cleanName(name)
-    if (!p || !clean || p.name === clean) return false
+    const clean = safeName(name)
+    if (!p || p.name === clean) return false
     p.name = clean
     return true
   }

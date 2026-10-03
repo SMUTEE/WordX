@@ -87,3 +87,62 @@ export function normalizeCode(code: string): string {
 export function cleanName(name: string): string {
   return name.replace(/\s+/g, ' ').trim().slice(0, NAME_MAX)
 }
+
+/**
+ * Names other players will see. Matched on a squashed form (lower case, look-alike digits
+ * mapped, separators removed) so "s.h.1.t" and "SH1T" are caught too. Kept short on purpose:
+ * slurs and the most common profanity, in English, Pidgin and Yoruba.
+ */
+const BLOCKED = [
+  'fuck', 'shit', 'cunt', 'bitch', 'whore', 'slut', 'dick', 'cock', 'pussy', 'penis', 'vagina', 'porn', 'rape',
+  'nigger', 'nigga', 'faggot', 'fag', 'retard', 'kike', 'chink', 'spic', 'tranny', 'nazi', 'hitler',
+  'asshole', 'bastard', 'wanker', 'twat', 'motherf', 'mofo',
+  'ashawo', 'olosho', 'ode', 'mumu', 'werey', 'oloshi', 'ashewo', 'pikin of',
+]
+const LEET: Record<string, string> = { '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '8': 'b', '@': 'a', $: 's', '!': 'i' }
+
+export function nameProblem(name: string): string | null {
+  const squashed = [...name.toLowerCase()].map((c) => LEET[c] ?? c).join('').replace(/[^a-z]/g, '')
+  const words = name.toLowerCase().split(/[^a-z0-9@$!]+/).map((w) => [...w].map((c) => LEET[c] ?? c).join(''))
+  // Short stems only match whole words ("ode" shouldn't block "Odeyemi"); long ones match anywhere.
+  const hit = BLOCKED.some((b) => (b.length <= 4 ? words.includes(b) : squashed.includes(b.replace(/\s+/g, ''))))
+  return hit ? 'Pick a different name — friends will see it' : null
+}
+
+/** A name safe to show to others: cleaned, and replaced if it's offensive. */
+export function safeName(name: string): string {
+  const clean = cleanName(name)
+  return clean && !nameProblem(clean) ? clean : 'Player'
+}
+
+// ---------- The daily drop (scored on the server) ----------
+
+/** Everything the server needs to replay a solo drop: the words, and when hints were taken. */
+export interface DropPlay {
+  slot: string
+  words: string[]
+  /** For each hint taken, how many guesses had been made at the time. */
+  hintsAfter: number[]
+  end?: 'gave-up' | 'time'
+}
+
+export interface DropView {
+  slot: string
+  number: number
+  ruleId: string
+  ruleVersion: number
+  setup: BoardSetup
+  meta: Record<string, string | number>
+  guesses: { word: string; feedback: Feedback }[]
+  hints: HintReveal[]
+  status: GameStatus
+  endReason?: EndReason
+  /** Only once the game is over. */
+  answer?: WordEntry
+}
+
+export interface DropResponse {
+  view: DropView
+  /** Set when the last word (or hint) was refused; nothing after `index` was applied. */
+  rejected?: { index: number; code: string; message: string }
+}
