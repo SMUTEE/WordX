@@ -2,12 +2,13 @@ import { createReadStream, existsSync, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { extname, join, normalize, resolve } from 'node:path'
 import { WebSocketServer, type WebSocket } from 'ws'
-import { normalizeCode, type ClientMessage, type CreateRoomRequest, type DropPlay } from '../src/net/protocol'
+import { normalizeCode, usernameKey, usernameProblem, type ClientMessage, type CreateRoomRequest, type DropPlay } from '../src/net/protocol'
 import { dropInfo, playDrop } from './drop'
 import { PROFILE_MAX_BYTES, applyLoad, applySave, checkProfileRequest, type ProfileRequest } from './profiles'
 import { Store } from './db'
 import { Hub, type Peer } from './hub'
-import { Room, RoomError, newRoomRecord, randomCode } from './rooms'
+import { Room, RoomError, hashSecret, newRoomRecord, randomCode } from './rooms'
+import { applyClaim, checkClaimRequest, isAvailable, type ClaimRequest } from './usernames'
 
 export interface ServerOptions {
   port: number
@@ -161,6 +162,30 @@ export function startServer(opts: ServerOptions): { server: Server; close(): Pro
       return 'error' in r ? json(res, r.status, { error: r.error }) : json(res, 200, r)
     }
 
+    if (req.method === 'GET' && path === '/api/username') {
+      const q = new URL(req.url ?? '/', 'http://local').searchParams
+      const name = String(q.get('name') ?? '').trim()
+      const problem = usernameProblem(name)
+      if (problem) return json(res, 200, { available: false, error: problem })
+      return json(res, 200, { available: isAvailable(store.getUsername(usernameKey(name)), q.get('id') ?? undefined) })
+    }
+    if (req.method === 'POST' && path === '/api/username/claim') {
+      let body: Partial<ClaimRequest>
+      try {
+        body = JSON.parse((await readBody(req)) || '{}')
+      } catch {
+        return json(res, 400, { error: 'Bad request' })
+      }
+      const check = checkClaimRequest(body)
+      if (!check.ok) return json(res, check.status, { error: check.error })
+      const previous = store.usernameOf(check.id)
+      if (previous && previous.secretHash !== hashSecret(check.secret)) return json(res, 403, { error: 'That doesn’t match your device' })
+      const r = applyClaim(store.getUsername(check.key), check.id, check.secret, check.username, Date.now())
+      if ('error' in r) return json(res, r.status, { error: r.error })
+      store.setUsername(check.key, r.record)
+      return json(res, 200, { username: check.username })
+    }
+
     if (req.method === 'POST' && (path === '/api/profile/save' || path === '/api/profile/load')) {
       let body: Partial<ProfileRequest>
       try {
@@ -192,7 +217,7 @@ export function startServer(opts: ServerOptions): { server: Server; close(): Pro
       }
       let code = randomCode()
       for (let i = 0; store.roomExists(code) && i < 20; i++) code = randomCode()
-      const made = newRoomRecord(code, body.ruleId, body.minutes, Date.now())
+      const made = newRoomRecord(code, body, Date.now())
       if ('error' in made) return json(res, 400, { error: made.error })
       store.createRoom(made.record)
       log('room created', code, made.record.ruleId)

@@ -3,28 +3,37 @@ import { useEffect, useState } from 'react'
 import { TIME_LIMITS } from '../../engine/engine'
 import { ChunkyButton, PosterWord } from './Bits'
 
-/** Off · 4 min · 5 min · 10 min, chosen before the first guess. */
-export function TimerPicker({ value, onChange }: { value: number | null; onChange(m: number | null): void }) {
-  const options: (number | null)[] = [null, ...TIME_LIMITS]
+/** A row of chips to pick one option, e.g. a time limit. */
+export function ChoicePicker<T extends number | null>({
+  label,
+  value,
+  options,
+  format,
+  onChange,
+}: {
+  label: string
+  value: T
+  options: readonly T[]
+  format(v: T): string
+  onChange(v: T): void
+}) {
   return (
-    <div className="timer-picker" role="radiogroup" aria-label="Timer">
-      <span className="name-label">Timer</span>
+    <div className="timer-picker" role="radiogroup" aria-label={label}>
+      <span className="name-label">{label}</span>
       <div className="timer-options">
         {options.map((m) => (
-          <button
-            key={m ?? 'off'}
-            type="button"
-            role="radio"
-            aria-checked={value === m}
-            className={`timer-chip${value === m ? ' timer-on' : ''}`}
-            onClick={() => onChange(m)}
-          >
-            {m ? `${m} min` : 'Off'}
+          <button key={String(m)} type="button" role="radio" aria-checked={value === m} className={`timer-chip${value === m ? ' timer-on' : ''}`} onClick={() => onChange(m)}>
+            {format(m)}
           </button>
         ))}
       </div>
     </div>
   )
+}
+
+/** Off · 4 min · 5 min · 10 min, chosen before the first guess. */
+export function TimerPicker({ value, onChange, label = 'Timer' }: { value: number | null; onChange(m: number | null): void; label?: string }) {
+  return <ChoicePicker label={label} value={value} options={[null, ...TIME_LIMITS]} format={(m) => (m ? `${m} min` : 'Off')} onChange={onChange} />
 }
 
 const fmt = (ms: number) => {
@@ -70,18 +79,24 @@ export function Clock({ deadline, limit, offset = 0, running }: { deadline: numb
   )
 }
 
-export function GiveUpPanel({ coop, onConfirm, onCancel }: { coop: boolean; onConfirm(): void; onCancel(): void }) {
+/** Confirming giving up (solo, or just yourself in a friends game) or ending a friends game for everyone. */
+export function GiveUpPanel({ mode, onConfirm, onCancel }: { mode: 'solo' | 'self' | 'end'; onConfirm(): void; onCancel(): void }) {
+  const copy = {
+    solo: { kicker: 'Stuck?', title: 'GIVE UP?', line: 'We’ll show you the word.', note: 'This counts as a loss for this game.', confirm: 'Show me the word' },
+    self: { kicker: 'Stuck?', title: 'GIVE UP?', line: 'You’ll see the word and sit out.', note: 'Your friends keep playing, and you can keep watching. Don’t spoil it!', confirm: 'Give up and show me the word' },
+    end: { kicker: 'You made this game', title: 'END GAME?', line: 'It ends for everyone, and we’ll show the word.', note: 'Only you can end it, because you created it.', confirm: 'End the game for everyone' },
+  }[mode]
   return (
     <div className="help">
-      <span className="kicker">Stuck?</span>
-      <PosterWord text="GIVE UP?" className="help-word" />
-      <p className="help-tagline">We’ll show you the word.</p>
-      <p className="result-note">{coop ? 'This ends the game for everyone and counts as a loss.' : 'This counts as a loss for this game.'}</p>
+      <span className="kicker">{copy.kicker}</span>
+      <PosterWord text={copy.title} className="help-word" />
+      <p className="help-tagline">{copy.line}</p>
+      <p className="result-note">{copy.note}</p>
       <ChunkyButton onClick={onCancel} className="play-btn">
-        Keep trying
+        Keep playing
       </ChunkyButton>
       <button type="button" className="link-btn" onClick={onConfirm}>
-        Show me the word
+        {copy.confirm}
       </button>
     </div>
   )

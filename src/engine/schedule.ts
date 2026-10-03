@@ -14,8 +14,8 @@ export interface ScheduleConfig {
 
 const HOUR_MS = 3_600_000
 const DAY_MS = 24 * HOUR_MS
-/** A new puzzle drops every six hours: 00, 06, 12 and 18 UTC. */
-export const DROP_HOURS = 6
+/** One new puzzle a day, at midnight UTC. (The drop length is one constant if that ever changes.) */
+export const DROP_HOURS = 24
 const DROP_MS = DROP_HOURS * HOUR_MS
 export const DROPS_PER_DAY = 24 / DROP_HOURS
 

@@ -73,7 +73,7 @@ function toState(view: DropView, record: DropRecord, puzzleId: string): GameStat
   }
 }
 
-/** The shared 6-hour drop. Every guess is checked and scored by the server. */
+/** The shared daily drop. Every guess is checked and scored by the server. */
 export function DropScreen() {
   const [view, setView] = useState<DropView | null>(null)
   const [record, setRecord] = useState<DropRecord>({ words: [], hintsAfter: [] })

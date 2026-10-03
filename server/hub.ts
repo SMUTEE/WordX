@@ -23,8 +23,6 @@ export interface HubHost {
  */
 export class Hub {
   readonly peers = new Set<Peer>()
-  /** When each player's last connection closed, to give the turn holder a grace period. */
-  private offlineSince = new Map<string, number>()
   readonly room: Room
   private host: HubHost
   private graceMs: number
@@ -44,17 +42,31 @@ export class Hub {
   }
 
   broadcast(now = Date.now()) {
-    const room = this.room.view()
-    for (const p of this.peers) if (p.playerId) this.send(p, { t: 'room', room, you: p.playerId, now })
+    // Each player gets their own view: someone who gave up also sees the answer.
+    for (const p of this.peers) if (p.playerId) this.send(p, { t: 'room', room: this.room.view(p.playerId), you: p.playerId, now })
+  }
+
+  /** When each player's last connection closed, to give the turn holder a grace period. Kept in the record so it survives hibernation. */
+  private get offlineSince(): Record<string, number> {
+    return (this.room.record.absent ??= {})
   }
 
   private async persist() {
     await this.host.save(this.room.record)
   }
 
-  private scheduleClock() {
-    const deadline = this.room.record.deadline
-    if (deadline && this.room.status === 'playing') this.host.wakeAt(deadline + 50)
+  /** Asks to be woken for whatever comes next: the game clock, the turn clock, or an absent turn holder. */
+  private scheduleTimers(now = Date.now()) {
+    if (this.room.status !== 'playing') return
+    const { deadline, turnDeadline } = this.room.record
+    if (deadline) this.host.wakeAt(deadline + 50)
+    if (turnDeadline) this.host.wakeAt(turnDeadline + 50)
+    const holder = this.room.view().turn
+    if (holder && !this.room.isOnline(holder)) {
+      // The turn just landed on someone who isn't here: their grace period starts now.
+      this.offlineSince[holder] ??= now
+      this.host.wakeAt(this.offlineSince[holder] + this.graceMs)
+    }
   }
 
   /** Re-attach a peer after the host was evicted from memory (Cloudflare hibernation). */
@@ -78,10 +90,12 @@ export class Hub {
 
     peer.playerId = playerId
     this.peers.add(peer)
-    this.offlineSince.delete(playerId)
+    const wasAbsent = playerId in this.offlineSince
+    delete this.offlineSince[playerId]
     const changed = this.room.connect(playerId, now)
-    if (joined.changed || changed) await this.persist()
-    this.scheduleClock()
+    if (changed) this.host.log?.('started', this.room.code)
+    if (joined.changed || changed || wasAbsent) await this.persist()
+    this.scheduleTimers(now)
     this.host.log?.('join', this.room.code, playerId)
     this.broadcast(now)
   }
@@ -115,6 +129,7 @@ export class Hub {
         }
         if (!outcome.duplicate) {
           await this.persist()
+          this.scheduleTimers(now)
           this.host.log?.('guess', room.code, playerId, `${room.record.guesses.length}/${room.game.setup.maxGuesses}`, room.status)
         }
         this.send(peer, { t: 'accepted', clientId })
@@ -130,17 +145,31 @@ export class Hub {
         this.broadcast(now)
         return
       }
+      // Give up just for yourself; your friends play on.
       case 'giveup': {
-        if (room.giveUp(playerId, now)) {
+        const outcome = room.giveUp(playerId, now)
+        if (!outcome.ok) return this.send(peer, { t: 'rejected', code: outcome.code, message: outcome.message })
+        if (!outcome.duplicate) {
           await this.persist()
+          this.scheduleTimers(now)
           this.host.log?.('gave up', room.code, playerId)
-          this.broadcast(now)
         }
+        this.broadcast(now)
+        return
+      }
+      // End the game for everyone; only its creator can.
+      case 'end': {
+        const outcome = room.endGame(playerId, now)
+        if (!outcome.ok) return this.send(peer, { t: 'rejected', code: outcome.code, message: outcome.message })
+        await this.persist()
+        this.host.log?.('ended', room.code, playerId)
+        this.broadcast(now)
         return
       }
       case 'pass': {
-        if (room.pass(playerId)) {
+        if (room.pass(playerId, now)) {
           await this.persist()
+          this.scheduleTimers(now)
           this.broadcast(now)
         }
         return
@@ -162,30 +191,31 @@ export class Hub {
     const playerId = peer.playerId
     if (!playerId) return
     if (this.room.disconnect(playerId)) {
-      this.offlineSince.set(playerId, now)
+      this.offlineSince[playerId] = now
+      await this.persist()
       // Give the turn holder a moment to come back (a refresh, a tunnel) before moving on.
-      if (this.room.view().turn === playerId) this.host.wakeAt(now + this.graceMs)
+      this.scheduleTimers(now)
       this.broadcast(now)
     }
   }
 
-  /** Timed work: move the turn on from an absent player, and end games whose clock ran out. */
+  /** Timed work: skip an absent turn holder, pass a turn whose clock ran out, end a game whose clock ran out. */
   async tick(now = Date.now()) {
     let changed = false
-    const holder = this.room.view().turn
-    if (holder && !this.room.isOnline(holder)) {
-      const since = this.offlineSince.get(holder) ?? 0
-      if (now - since >= this.graceMs) changed = this.room.handOffIfAbsent(holder) || changed
-      else this.host.wakeAt(since + this.graceMs)
-    }
     if (this.room.expire(now)) {
       changed = true
       this.host.log?.('time up', this.room.code)
     }
+    const holder = this.room.view().turn
+    if (holder && !this.room.isOnline(holder)) {
+      const since = this.offlineSince[holder] ?? now
+      if (now - since >= this.graceMs) changed = this.room.handOffIfAbsent(holder, now) || changed
+    }
+    if (this.room.turnExpired(now)) changed = true
     if (changed) {
       await this.persist()
       this.broadcast(now)
     }
-    this.scheduleClock()
+    this.scheduleTimers(now)
   }
 }

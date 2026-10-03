@@ -250,8 +250,15 @@ export function ResultPanel({ game, answer: revealed, state, stats, preset, onTo
   // Rules without tile colours (Fog) still reveal the answer in green.
   const answerPreset = preset.face('correct').background === preset.face(null).background ? PRESETS.flip : preset
 
-  const lostLine = state.endReason === 'time' ? 'Time ran out. The word was' : state.endReason === 'gave-up' ? 'You gave up. The word was' : `You used all ${max} tries. The word was`
-  const headline = won ? (level?.isLast ? 'CHAMPION' : 'SOLVED') : state.endReason === 'time' ? 'TIME’S UP' : 'NOT TODAY'
+  const lostLine =
+    state.endReason === 'time'
+      ? 'Time ran out. The word was'
+      : state.endReason === 'gave-up'
+        ? 'You gave up. The word was'
+        : state.endReason === 'ended'
+          ? 'The game was ended. The word was'
+          : `You used all ${max} tries. The word was`
+  const headline = won ? (level?.isLast ? 'CHAMPION' : 'SOLVED') : state.endReason === 'time' ? 'TIME’S UP' : state.endReason === 'ended' ? 'GAME ENDED' : 'NOT TODAY'
   const stars = starsFor(state, setup)
 
   const onShare = async () => {
@@ -421,7 +428,7 @@ export function HelpPanel({ game, preset, rules, onSettings }: { game: Game; pre
         <li>Guess the hidden {game.setup.length}-letter word in {game.setup.maxGuesses} tries.</li>
         <li>Every day the rule changes how feedback works.</li>
         <li>Refused guesses never cost you an attempt.</li>
-        <li>Everyone gets the same puzzle. A new one drops every 6 hours, each with a different rule.</li>
+        <li>Everyone gets the same daily puzzle. A new one drops every day at midnight UTC, each with a different rule.</li>
         <li>Your streak counts days in a row with at least one solve.</li>
       </ol>
       <hr className="rule" />

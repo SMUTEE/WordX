@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Me } from './identity'
-import type { ClientMessage, RoomView, ServerMessage } from './protocol'
+import type { ClientMessage, CreateRoomRequest, RoomView, ServerMessage } from './protocol'
 
 export type Connection = 'connecting' | 'open' | 'reconnecting' | 'failed'
 
@@ -20,7 +20,10 @@ export interface RoomApi {
   sendTyping(letters: string[]): void
   pass(): void
   hint(): void
+  /** Give up just for yourself. */
   giveUp(): void
+  /** End the game for everyone (creator only). */
+  endGame(): void
   /** Server time minus local time, to show the same countdown everyone else sees. */
   clockOffset: number
   rename(name: string): void
@@ -180,14 +183,15 @@ export function useRoom(code: string, me: Me, enabled: boolean): RoomApi {
   const pass = useCallback(() => void send({ t: 'pass' }), [send])
   const hint = useCallback(() => void send({ t: 'hint' }), [send])
   const giveUp = useCallback(() => void send({ t: 'giveup' }), [send])
+  const endGame = useCallback(() => void send({ t: 'end' }), [send])
   const rename = useCallback((name: string) => void send({ t: 'rename', name }), [send])
 
-  return { connection, room, you, error, typing, notice, clockOffset, guess, sendTyping, pass, hint, giveUp, rename }
+  return { connection, room, you, error, typing, notice, clockOffset, guess, sendTyping, pass, hint, giveUp, endGame, rename }
 }
 
-export async function createRoom(ruleId: string, minutes: number | null): Promise<{ code: string } | { error: string }> {
+export async function createRoom(req: CreateRoomRequest): Promise<{ code: string } | { error: string }> {
   try {
-    const res = await fetch('/api/rooms', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ruleId, minutes }) })
+    const res = await fetch('/api/rooms', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(req) })
     const body = await res.json()
     return res.ok ? { code: body.code } : { error: body.error ?? 'Couldn’t create a game' }
   } catch {

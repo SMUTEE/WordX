@@ -6,7 +6,8 @@ import type { RoomApi } from '../../net/useRoom'
 import { registry } from '../../rules'
 import { ChunkyButton, Confetti, PosterWord, Sheet, ToastHost } from '../components/Bits'
 import { Board } from '../components/Board'
-import { InvitePanel, LeavePanel, NameField, PlayersStrip, TurnStatus } from '../components/Coop'
+import { InvitePanel, LeavePanel, PlayersStrip, TurnStatus } from '../components/Coop'
+import { UsernameClaim } from '../components/Username'
 import { Keyboard } from '../components/Keyboard'
 import { ExampleRow, HelpPanel, HintBar, HintPanel, Legend, ResultPanel } from '../components/Panels'
 import { PRESETS } from '../motion/presets'
@@ -34,8 +35,9 @@ export interface LevelProps {
 export interface CoopProps {
   api: RoomApi
   me: Me
-  name: string
-  onName(name: string): void
+  /** Your claimed username, or null if you still need one before joining. */
+  username: string | null
+  onClaimed(): void
 }
 
 /** The game itself — the same screen for solo drops and co-op rooms. */
@@ -66,7 +68,17 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
         hint: coop.api.hint,
         giveUp: coop.api.giveUp,
         onTyping: myTurn ? coop.api.sendTyping : undefined,
-        lockedReason: !connected ? 'Reconnecting…' : !myTurn ? (turnPlayer ? `It’s ${turnPlayer.name}’s turn` : 'Waiting for players') : undefined,
+        lockedReason: !connected
+          ? 'Reconnecting…'
+          : room?.youGaveUp
+            ? 'You gave up this game'
+            : room?.waiting
+            ? 'Waiting for a friend to join'
+            : !myTurn
+              ? turnPlayer
+                ? `It’s ${turnPlayer.name}’s turn`
+                : 'Waiting for players'
+              : undefined,
       }
     : drop?.source
 
@@ -77,7 +89,7 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
   const fresh = g.state.guesses.length === 0
   const [phase, setPhase] = useState<'intro' | 'play'>(g.state.status === 'playing' ? 'intro' : 'play')
   const [entering, setEntering] = useState(false)
-  const [sheet, setSheet] = useState<'none' | 'result' | 'help' | 'invite' | 'leave' | 'giveup'>(g.state.status === 'playing' ? 'none' : 'result')
+  const [sheet, setSheet] = useState<'none' | 'result' | 'help' | 'invite' | 'leave' | 'giveup' | 'end'>(g.state.status === 'playing' ? 'none' : 'result')
 
   useEffect(() => {
     if (!g.finishedNow) return
@@ -89,7 +101,7 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
   const showIntro = phase === 'intro' && !(coop && g.state.status !== 'playing')
 
   const start = () => {
-    if (coop && !coop.name.trim()) return g.say('Add your name so friends know who’s playing')
+    if (coop && !coop.username) return g.say('Pick a username first so friends know who’s playing')
     if (!coop && fresh && g.state.status === 'playing') {
       saveTimerPref(timerPick)
       if (timerPick) g.startTimer(timerPick)
@@ -126,8 +138,18 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
   // Leaving a game in progress always asks first.
   const quit = () => (g.state.status === 'playing' ? setSheet('leave') : navigate(home))
   const badge = level ? `Level ${level.def.n}` : coop ? 'With friends' : puzzle.preview ? 'Practice' : undefined
+  const creatorName = room?.players.find((x) => x.id === room.creatorId)?.name
   const endLine =
-    g.state.endReason === 'time' ? 'Time’s up. The word was' : g.state.endReason === 'gave-up' ? 'You gave up. The word was' : 'Out of tries. The word was'
+    g.state.endReason === 'time'
+      ? 'Time’s up. The word was'
+      : g.state.endReason === 'gave-up'
+        ? 'You gave up. The word was'
+        : g.state.endReason === 'ended'
+          ? `${room?.creatorId === you ? 'You' : (creatorName ?? 'The creator')} ended the game. The word was`
+          : 'Out of tries. The word was'
+  // Anyone can give up for themselves; only a friends game's creator can end it for everyone.
+  const isCreator = !!room && room.creatorId === you
+  const youGaveUp = !!room?.youGaveUp && g.state.status === 'playing'
 
   // Fog's mist thins as your best guess heats up.
   const heat = Math.max(0, ...g.display.guesses.map((x) => (x.feedback.kind === 'meter' ? x.feedback.value : 0)))
@@ -151,13 +173,15 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
 
   const turnText = !connected
     ? 'Reconnecting…'
-    : myTurn
-      ? othersOnline
-        ? 'Your turn'
-        : 'Your turn. Invite a friend to take the next one'
-      : turnPlayer
-        ? `${turnPlayer.name} is playing`
-        : 'Waiting for players'
+    : room?.waiting
+      ? 'Waiting for a friend to join'
+      : myTurn
+        ? othersOnline
+          ? 'Your turn'
+          : 'Your turn. Your friend has stepped away'
+        : turnPlayer
+          ? `${turnPlayer.name} is playing`
+          : 'Waiting for players'
 
   return (
     <Chrome theme={p.theme} name={p.name} motion={p.motion} heat={heat} letters={hintLetters} reduce={!!reduce} ink={ink}>
@@ -191,7 +215,13 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
                   ) : (
                     <p className="relay-card-text">You’re first in. Start playing, then invite friends any time.</p>
                   )}
-                  <NameField value={coop.name} onChange={coop.onName} />
+                  {coop.username ? (
+                    <p className="playing-as">
+                      Playing as <strong>@{coop.username}</strong>
+                    </p>
+                  ) : (
+                    <UsernameClaim cta="Claim username" onClaimed={coop.onClaimed} />
+                  )}
                 </motion.div>
               )}
               {!coop && (
@@ -256,7 +286,19 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
                   aria-label={done ? `${g.state.status === 'won' ? 'Solved' : 'Out of tries'}, ${guessNo} of ${setup.maxGuesses}` : `Try ${guessNo} of ${setup.maxGuesses}`}
                 >
                   <span className="pill-label">
-                    {done ? (g.state.status === 'won' ? 'Solved' : g.state.endReason === 'gave-up' ? 'Gave up' : g.state.endReason === 'time' ? 'Time' : 'Out') : lastTry ? 'Last' : 'Try'}
+                    {done
+                      ? g.state.status === 'won'
+                        ? 'Solved'
+                        : g.state.endReason === 'gave-up'
+                          ? 'Gave up'
+                          : g.state.endReason === 'time'
+                            ? 'Time'
+                            : g.state.endReason === 'ended'
+                              ? 'Ended'
+                              : 'Out'
+                      : lastTry
+                        ? 'Last'
+                        : 'Try'}
                   </span>
                   <AnimatePresence mode="popLayout" initial={false}>
                     <motion.span key={guessNo} initial={{ y: -18, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 18, opacity: 0 }} transition={{ type: 'spring', stiffness: 500, damping: 26 }}>
@@ -275,7 +317,19 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
               {coop && room && (
                 <div className="coop-bar">
                   <PlayersStrip players={room.players} turn={room.turn} you={you} />
-                  {g.state.status === 'playing' && <TurnStatus text={turnText} mine={myTurn && connected} onPass={myTurn && othersOnline ? coop.api.pass : undefined} />}
+                  {g.state.status === 'playing' && (
+                    <div className="turn-row">
+                      <TurnStatus text={turnText} mine={myTurn && connected} onPass={myTurn && othersOnline ? coop.api.pass : undefined} />
+                      {room.turnDeadline && room.turnLimit && !room.waiting && (
+                        <Clock deadline={room.turnDeadline} limit={room.turnLimit} offset={coop.api.clockOffset} running />
+                      )}
+                    </div>
+                  )}
+                  {room.waiting && g.state.status === 'playing' && (
+                    <ChunkyButton onClick={() => setSheet('invite')} className="waiting-invite">
+                      Invite a friend to start
+                    </ChunkyButton>
+                  )}
                 </div>
               )}
               <div className="status-slot">
@@ -299,13 +353,33 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
                 rowLabels={rowLabels}
                 ghost={!!ghost}
               />
-              {g.state.status === 'playing' || g.revealingRow !== null ? (
+              {youGaveUp && g.revealingRow === null ? (
+                <motion.div className="done-bar" initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }}>
+                  <p className="done-line">
+                    You gave up. The word is
+                    <strong className="done-answer">{answer.word}</strong>
+                  </p>
+                  <p className="result-note watching-note">Your friends are still playing. Keep it to yourself!</p>
+                  {isCreator && (
+                    <button type="button" className="link-btn give-up" onClick={() => setSheet('end')}>
+                      End game for everyone
+                    </button>
+                  )}
+                </motion.div>
+              ) : g.state.status === 'playing' || g.revealingRow !== null ? (
                 <div className={`keyboard-wrap${g.locked ? ' keyboard-locked' : ''}`}>
                   <Keyboard states={g.keyStates} onKey={g.onKey} onEnter={g.onEnter} onBack={g.onBack} shake={g.keyShake} entering={entering} disabledBorder={softInk(p.theme)} />
-                  {g.state.status === 'playing' && (
-                    <button type="button" className="link-btn give-up" onClick={() => setSheet('giveup')}>
-                      I give up
-                    </button>
+                  {g.state.status === 'playing' && !(coop && room?.waiting) && (
+                    <div className="quit-links">
+                      <button type="button" className="link-btn give-up" onClick={() => setSheet('giveup')}>
+                        I give up
+                      </button>
+                      {isCreator && (
+                        <button type="button" className="link-btn give-up" onClick={() => setSheet('end')}>
+                          End game
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               ) : (
@@ -358,7 +432,7 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
       </Sheet>
       <Sheet open={sheet === 'giveup'} onClose={closeSheet} label="Give up">
         <GiveUpPanel
-          coop={!!coop}
+          mode={coop ? 'self' : 'solo'}
           onCancel={closeSheet}
           onConfirm={() => {
             closeSheet()
@@ -366,6 +440,18 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
           }}
         />
       </Sheet>
+      {coop && (
+        <Sheet open={sheet === 'end'} onClose={closeSheet} label="End game">
+          <GiveUpPanel
+            mode="end"
+            onCancel={closeSheet}
+            onConfirm={() => {
+              closeSheet()
+              coop.api.endGame()
+            }}
+          />
+        </Sheet>
+      )}
     </Chrome>
   )
 }

@@ -15,6 +15,8 @@ export interface PlayerView {
   id: string
   name: string
   online: boolean
+  /** Gave up: out of the rotation, watching. */
+  gaveUp?: boolean
   /** Seat order, used for turns and colours. */
   seat: number
 }
@@ -46,6 +48,15 @@ export interface RoomView {
   timeLimit?: number
   deadline?: number
   endReason?: EndReason
+  /** Who made the game; only they can end it early. */
+  creatorId?: string
+  /** Optional per-turn limit (ms) and when the current turn runs out. */
+  turnLimit?: number
+  turnDeadline?: number
+  /** True until a second player joins: nobody can play alone. */
+  waiting: boolean
+  /** You gave up: you see the answer, your friends play on. */
+  youGaveUp?: boolean
   /** Revealed only once the game is over. */
   answer?: WordEntry
 }
@@ -56,7 +67,10 @@ export type ClientMessage =
   | { t: 'guess'; word: string; clientId: string }
   | { t: 'pass' }
   | { t: 'hint' }
+  /** Give up just for yourself. */
   | { t: 'giveup' }
+  /** End the game for everyone (creator only). */
+  | { t: 'end' }
   | { t: 'rename'; name: string }
   | { t: 'ping' }
 
@@ -70,9 +84,15 @@ export type ServerMessage =
 
 export interface CreateRoomRequest {
   ruleId: string
-  /** Optional time limit in minutes: 4, 5 or 10. */
-  minutes?: number
+  /** Optional game time limit in minutes: 4, 5 or 10. */
+  minutes?: number | null
+  /** Optional per-turn limit in seconds: 30, 60 or 90. */
+  turnSeconds?: number | null
+  /** The creating player's id; they go first and can end the game. */
+  creatorId?: string
 }
+
+export const TURN_LIMITS = [30, 60, 90] as const
 
 export interface CreateRoomResponse {
   code: string
@@ -146,3 +166,18 @@ export interface DropResponse {
   /** Set when the last word (or hint) was refused; nothing after `index` was applied. */
   rejected?: { index: number; code: string; message: string }
 }
+
+// ---------- Usernames ----------
+
+export const USERNAME_RE = /^[A-Za-z0-9_]{3,16}$/
+
+/** Why a username can't be used, or null if it's fine to try claiming. */
+export function usernameProblem(name: string): string | null {
+  if (name.length < 3) return 'At least 3 characters'
+  if (name.length > 16) return 'At most 16 characters'
+  if (!USERNAME_RE.test(name)) return 'Letters, numbers and _ only'
+  if (nameProblem(name)) return 'Pick a different username'
+  return null
+}
+
+export const usernameKey = (name: string) => name.toLowerCase()

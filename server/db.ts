@@ -2,7 +2,12 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { ProfileRecord } from './profiles'
+import type { UsernameRecord } from './usernames'
 import type { GuessRecord, PlayerRecord, RoomRecord } from './rooms'
+
+/** Newer room fields, kept in one JSON column so adding more never needs a migration. */
+const extra = (r: RoomRecord) =>
+  JSON.stringify({ creatorId: r.creatorId, turnLimit: r.turnLimit, turnDeadline: r.turnDeadline, startedAt: r.startedAt, gaveUp: r.gaveUp, absent: r.absent })
 
 /**
  * SQLite persistence (Node's built-in driver, no extra dependency). Rooms survive restarts:
@@ -46,6 +51,13 @@ export class Store {
         UNIQUE (room_code, client_id)
       );
       CREATE INDEX IF NOT EXISTS rooms_updated ON rooms(updated_at);
+      CREATE TABLE IF NOT EXISTS usernames (
+        name_key TEXT PRIMARY KEY,
+        display TEXT NOT NULL,
+        player_id TEXT NOT NULL UNIQUE,
+        secret_hash TEXT NOT NULL,
+        claimed_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS profiles (
         id TEXT PRIMARY KEY,
         secret_hash TEXT NOT NULL,
@@ -59,6 +71,7 @@ export class Store {
     if (!columns.includes('time_limit')) this.db.exec('ALTER TABLE rooms ADD COLUMN time_limit INTEGER')
     if (!columns.includes('deadline')) this.db.exec('ALTER TABLE rooms ADD COLUMN deadline INTEGER')
     if (!columns.includes('ended')) this.db.exec('ALTER TABLE rooms ADD COLUMN ended TEXT')
+    if (!columns.includes('extra')) this.db.exec("ALTER TABLE rooms ADD COLUMN extra TEXT NOT NULL DEFAULT '{}'")
   }
 
   roomExists(code: string): boolean {
@@ -67,8 +80,8 @@ export class Store {
 
   createRoom(r: RoomRecord) {
     this.db
-      .prepare('INSERT INTO rooms (code, rule_id, rule_version, slot, created_at, updated_at, turn, time_limit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(r.code, r.ruleId, r.ruleVersion, r.slot, r.createdAt, r.createdAt, r.turn, r.timeLimit)
+      .prepare('INSERT INTO rooms (code, rule_id, rule_version, slot, created_at, updated_at, turn, time_limit, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(r.code, r.ruleId, r.ruleVersion, r.slot, r.createdAt, r.createdAt, r.turn, r.timeLimit, extra(r))
   }
 
   loadRoom(code: string): RoomRecord | null {
@@ -97,6 +110,7 @@ export class Store {
       timeLimit: row.time_limit == null ? null : Number(row.time_limit),
       deadline: row.deadline == null ? null : Number(row.deadline),
       ended: row.ended == null ? null : JSON.parse(String(row.ended)),
+      ...JSON.parse(String(row.extra ?? '{}')),
       players,
       guesses,
     }
@@ -110,8 +124,8 @@ export class Store {
   saveRecord(r: RoomRecord, now = Date.now()) {
     this.tx(() => {
       this.db
-        .prepare('UPDATE rooms SET turn = ?, deadline = ?, ended = ?, hints = ?, updated_at = ? WHERE code = ?')
-        .run(r.turn, r.deadline, r.ended ? JSON.stringify(r.ended) : null, JSON.stringify(r.hints), now, r.code)
+        .prepare('UPDATE rooms SET turn = ?, deadline = ?, ended = ?, hints = ?, extra = ?, updated_at = ? WHERE code = ?')
+        .run(r.turn, r.deadline, r.ended ? JSON.stringify(r.ended) : null, JSON.stringify(r.hints), extra(r), now, r.code)
       const player = this.db.prepare(
         `INSERT INTO players (room_code, id, name, secret_hash, seat, joined_at) VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT (room_code, id) DO UPDATE SET name = excluded.name`,
@@ -134,6 +148,32 @@ export class Store {
          ON CONFLICT (id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
       )
       .run(id, r.secretHash, r.data, r.updatedAt)
+  }
+
+  getUsername(key: string): UsernameRecord | null {
+    const row = this.db.prepare('SELECT * FROM usernames WHERE name_key = ?').get(key) as Record<string, unknown> | undefined
+    return row ? { playerId: String(row.player_id), secretHash: String(row.secret_hash), display: String(row.display), claimedAt: Number(row.claimed_at) } : null
+  }
+
+  /** The name a player currently holds, if any. */
+  usernameOf(playerId: string): (UsernameRecord & { key: string }) | null {
+    const row = this.db.prepare('SELECT * FROM usernames WHERE player_id = ?').get(playerId) as Record<string, unknown> | undefined
+    return row
+      ? { key: String(row.name_key), playerId: String(row.player_id), secretHash: String(row.secret_hash), display: String(row.display), claimedAt: Number(row.claimed_at) }
+      : null
+  }
+
+  /** Takes a name, releasing the player's previous one, in one transaction. */
+  setUsername(key: string, r: UsernameRecord) {
+    this.tx(() => {
+      this.db.prepare('DELETE FROM usernames WHERE player_id = ? AND name_key <> ?').run(r.playerId, key)
+      this.db
+        .prepare(
+          `INSERT INTO usernames (name_key, display, player_id, secret_hash, claimed_at) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT (name_key) DO UPDATE SET display = excluded.display`,
+        )
+        .run(key, r.display, r.playerId, r.secretHash, r.claimedAt)
+    })
   }
 
   /** Deletes rooms untouched since `before`. Returns how many went. */

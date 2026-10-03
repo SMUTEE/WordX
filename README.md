@@ -1,6 +1,6 @@
 # WordX
 
-One word game, a new rule every six hours. You already know how to play — you don't know what this drop's rule is.
+One word game, a new rule every day. You already know how to play — you don't know what today's rule is.
 
 ```bash
 npm install
@@ -49,7 +49,7 @@ Preview any rule with `?rule=fog` (also `standard`, `category`, `anagram`, `deca
 ## Modes
 
 - **Journey** (`/journey`): ten levels on a road map. Clear one to unlock the next; stars for solving with tries to spare and no hints. Each level turns several dials — rule, word length (4 → 5 → 6), how common the word is, tries and hints. See `src/journey/levels.ts`. Every player walks their own shuffled order of each level's pool, so people at the same level rarely share a word, and nobody repeats a word until they've used the pool.
-- **Daily drop** (`/play`): one global word every 6 hours.
+- **Daily drop** (`/play`): one global word a day, scored on the server.
 - **With friends** (`/room/CODE`): live turn-based rooms on the game server.
 
 Every game can be timed (off, 4, 5 or 10 minutes, chosen before the first guess) and has an "I give up" option that reveals the word.
@@ -60,7 +60,7 @@ Every game can be timed (off, 4, 5 or 10 minutes, chosen before the first guess)
 
 ## Drops
 
-A new global puzzle drops every 6 hours (00, 06, 12, 18 UTC), each with the next rule in the rotation. A streak counts days in a row with at least one solve.
+A new global puzzle drops every day at midnight UTC, each with the next rule in the rotation. A streak counts days in a row with at least one solve.
 
 ## Relay
 
@@ -75,7 +75,7 @@ Friends solve one board together, one try each. The link carries the rule, a pri
 ```
 src/engine/    the game loop — knows no rule by name
   engine.ts      validate → score → update; invalid guesses never cost an attempt
-  schedule.ts    drop + rule + version → the same puzzle everywhere (6-hour UTC drops)
+  schedule.ts    drop + rule + version → the same puzzle everywhere (daily UTC drops)
   registry.ts    rejects rules whose declared capabilities don't match their hooks
 src/rules/     one module per rule, each overriding only what it declares
 src/data/      curated answers, categories, Naija vocabulary, schedule.json

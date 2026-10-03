@@ -1,7 +1,7 @@
 {
-  "name": "WordX — a new rule every 6 hours",
+  "name": "WordX — a new rule every day",
   "short_name": "WordX",
-  "description": "The word game you know, with a rule that changes every 6 hours. Climb the Journey or play live with friends.",
+  "description": "The word game you know, with a rule that changes every day. Climb the Journey or play live with friends.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

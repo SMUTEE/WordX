@@ -12,8 +12,8 @@ import { registry } from '../src/rules'
  * call replays the whole game from the words, so there's nothing to store per player.
  */
 
-/** How far back a drop can still be played, so a game started before rollover can finish. */
-const GRACE_SLOTS = 4
+/** How far back a drop can still be played, so a game started before midnight can finish. */
+const GRACE_SLOTS = 1
 
 const cache = new Map<string, Game>()
 

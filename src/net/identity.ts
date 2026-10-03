@@ -5,7 +5,10 @@
 export interface Me {
   id: string
   secret: string
+  /** Your username once claimed (unique on the server), otherwise a draft. */
   name: string
+  /** True once the server has reserved `name` for you. */
+  claimed?: boolean
 }
 
 const KEY = 'wordx:v1:me'
@@ -15,7 +18,7 @@ const random = (bytes: number) => Array.from(crypto.getRandomValues(new Uint8Arr
 export function getMe(): Me {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Partial<Me> | null
-    if (saved?.id && saved.secret) return { id: saved.id, secret: saved.secret, name: saved.name ?? '' }
+    if (saved?.id && saved.secret) return { id: saved.id, secret: saved.secret, name: saved.name ?? '', claimed: !!saved.claimed }
     if (saved?.id) {
       // Upgrade an identity from before secrets existed.
       const upgraded = { id: saved.id, secret: random(24), name: saved.name ?? '' }

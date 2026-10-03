@@ -5,7 +5,9 @@ import { nameProblem } from '../../net/protocol'
 import { share } from '../share'
 import { POSTER } from '../theme'
 import { ChunkyButton, PosterWord } from './Bits'
-import { TimerPicker } from './Clock'
+import { ChoicePicker, TimerPicker } from './Clock'
+import { UsernameClaim } from './Username'
+import { TURN_LIMITS } from '../../net/protocol'
 
 const playerColor = (seat: number) => POSTER[(seat + 1) % (POSTER.length - 1)]
 
@@ -46,7 +48,7 @@ export function PlayersStrip({ players, turn, you }: { players: PlayerView[]; tu
           <motion.li
             key={p.id}
             layout
-            className={`player${active ? ' player-turn' : ''}${p.online ? '' : ' player-away'}`}
+            className={`player${active ? ' player-turn' : ''}${p.online ? '' : ' player-away'}${p.gaveUp ? ' player-out' : ''}`}
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: 'spring', stiffness: 500, damping: 22 }}
@@ -129,33 +131,35 @@ interface RuleChoice {
 }
 
 export function CreateGamePanel({
-  name,
-  onName,
+  username,
+  onClaimed,
   rules,
   defaultRule,
   busy,
   onCreate,
 }: {
-  name: string
-  onName(n: string): void
+  /** Your claimed username, or null if you still need one. */
+  username: string | null
+  onClaimed(): void
   rules: RuleChoice[]
   defaultRule: string
   busy: boolean
-  onCreate(ruleId: string, minutes: number | null): void
+  onCreate(ruleId: string, minutes: number | null, turnSeconds: number | null): void
 }) {
   const [rule, setRule] = useState(defaultRule)
   const [minutes, setMinutes] = useState<number | null>(null)
+  const [turnSeconds, setTurnSeconds] = useState<number | null>(60)
   return (
     <div className="help">
       <span className="kicker">Play with friends</span>
       <PosterWord text="TEAM UP" className="help-word" />
       <p className="help-tagline">One board, one word. You take turns, and everyone sees every guess live.</p>
       <ol className="help-list">
-        <li>Create a game and send the link.</li>
-        <li>Whoever’s turn it is types; everyone else watches it happen.</li>
-        <li>Crack it together before the tries run out.</li>
+        <li>Create a game and send the link. Play starts when a friend joins, and you go first.</li>
+        <li>Take turns: whoever’s turn it is types, everyone else watches it happen.</li>
+        <li>If a turn’s time runs out, it passes on. No try is used.</li>
       </ol>
-      <NameField value={name} onChange={onName} />
+      {username ? <p className="playing-as">Playing as <strong>@{username}</strong></p> : <UsernameClaim cta="Claim username" onClaimed={onClaimed} />}
       <span className="kicker">Rule</span>
       <div className="practice">
         {rules.map((r) => (
@@ -171,8 +175,9 @@ export function CreateGamePanel({
           </button>
         ))}
       </div>
-      <TimerPicker value={minutes} onChange={setMinutes} />
-      <ChunkyButton onClick={() => onCreate(rule, minutes)} className="play-btn">
+      <ChoicePicker label="Time per turn" value={turnSeconds} options={[null, ...TURN_LIMITS]} format={(v) => (v ? `${v} sec` : 'Off')} onChange={setTurnSeconds} />
+      <TimerPicker value={minutes} onChange={setMinutes} label="Time for the whole game" />
+      <ChunkyButton onClick={() => onCreate(rule, minutes, turnSeconds)} className="play-btn">
         {busy ? 'Creating…' : 'Create game'}
       </ChunkyButton>
       <p className="result-note">Games with friends get their own word, so this drop stays unspoiled. They don’t count toward your solo stats.</p>

@@ -34,7 +34,8 @@ export interface GameState {
   endReason?: EndReason
 }
 
-export type EndReason = 'tries' | 'time' | 'gave-up'
+/** How a lost game ended. 'ended' = a friends game's creator ended it. */
+export type EndReason = 'tries' | 'time' | 'gave-up' | 'ended'
 
 export type HintReveal = { kind: 'clue'; text: string } | { kind: 'letter'; index: number; letter: string }
 

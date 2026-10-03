@@ -14,12 +14,14 @@
   "durable_objects": {
     "bindings": [
       { "name": "ROOMS", "class_name": "RoomObject" },
-      { "name": "PROFILES", "class_name": "ProfileObject" }
+      { "name": "PROFILES", "class_name": "ProfileObject" },
+      { "name": "USERNAMES", "class_name": "UsernameObject" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["RoomObject"] },
-    { "tag": "v2", "new_sqlite_classes": ["ProfileObject"] }
+    { "tag": "v2", "new_sqlite_classes": ["ProfileObject"] },
+    { "tag": "v3", "new_sqlite_classes": ["UsernameObject"] }
   ],
   "observability": { "enabled": true }
 }

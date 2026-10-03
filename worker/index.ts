@@ -1,7 +1,9 @@
 import { DurableObject } from 'cloudflare:workers'
-import { normalizeCode, type ClientMessage, type CreateRoomRequest, type DropPlay, type ServerMessage } from '../src/net/protocol'
+import { normalizeCode, usernameKey, usernameProblem, type ClientMessage, type CreateRoomRequest, type DropPlay, type ServerMessage } from '../src/net/protocol'
 import { dropInfo, playDrop } from '../server/drop'
 import { PROFILE_MAX_BYTES, applyLoad, applySave, checkProfileRequest, type ProfileRecord, type ProfileRequest } from '../server/profiles'
+import { applyClaim, checkClaimRequest, isAvailable, type ClaimRequest, type UsernameRecord } from '../server/usernames'
+import { hashSecret } from '../server/rooms'
 import { Hub, type Peer } from '../server/hub'
 import { Room, RoomError, newRoomRecord, randomCode, type RoomRecord } from '../server/rooms'
 
@@ -13,6 +15,7 @@ import { Room, RoomError, newRoomRecord, randomCode, type RoomRecord } from '../
 export interface Env {
   ROOMS: DurableObjectNamespace<RoomObject>
   PROFILES: DurableObjectNamespace<ProfileObject>
+  USERNAMES: DurableObjectNamespace<UsernameObject>
   ASSETS: Fetcher
   /** Secret for daily-drop answers: `npx wrangler secret put DROP_SALT`. */
   DROP_SALT?: string
@@ -55,6 +58,42 @@ export default {
       return 'error' in r ? json(r.status, { error: r.error }) : json(200, r)
     }
 
+    if (path === '/api/username' && request.method === 'GET') {
+      const name = String(url.searchParams.get('name') ?? '').trim()
+      const problem = usernameProblem(name)
+      if (problem) return json(200, { available: false, error: problem })
+      const res = await env.USERNAMES.get(env.USERNAMES.idFromName(usernameKey(name))).fetch('https://name/get')
+      const existing = (await res.json()) as UsernameRecord | null
+      return json(200, { available: isAvailable(existing, url.searchParams.get('id') ?? undefined) })
+    }
+    if (path === '/api/username/claim' && request.method === 'POST') {
+      let body: Partial<ClaimRequest>
+      try {
+        body = JSON.parse((await request.text()) || '{}')
+      } catch {
+        return json(400, { error: 'Bad request' })
+      }
+      const check = checkClaimRequest(body)
+      if (!check.ok) return json(check.status, { error: check.error })
+      const nameStub = env.USERNAMES.get(env.USERNAMES.idFromName(check.key))
+      const claimed = await nameStub.fetch('https://name/claim', { method: 'POST', body: JSON.stringify({ id: check.id, secret: check.secret, display: check.username }) })
+      if (claimed.status !== 200) return claimed
+      // Record it on the player's profile, which proves the device and tells us their old name.
+      const prof = await env.PROFILES.get(env.PROFILES.idFromName(check.id)).fetch('https://profile/username', {
+        method: 'POST',
+        body: JSON.stringify({ secret: check.secret, username: check.username }),
+      })
+      if (prof.status !== 200) {
+        await nameStub.fetch('https://name/release', { method: 'POST', body: JSON.stringify({ id: check.id }) })
+        return prof
+      }
+      const { previous } = (await prof.json()) as { previous: string | null }
+      if (previous && usernameKey(previous) !== check.key) {
+        await env.USERNAMES.get(env.USERNAMES.idFromName(usernameKey(previous))).fetch('https://name/release', { method: 'POST', body: JSON.stringify({ id: check.id }) })
+      }
+      return json(200, { username: check.username })
+    }
+
     if ((path === '/api/profile/save' || path === '/api/profile/load') && request.method === 'POST') {
       const text = await request.text()
       if (text.length > PROFILE_MAX_BYTES + 512) return json(413, { error: 'Too large' })
@@ -81,7 +120,7 @@ export default {
       }
       for (let attempt = 0; attempt < 5; attempt++) {
         const code = randomCode()
-        const made = newRoomRecord(code, body.ruleId, body.minutes, Date.now())
+        const made = newRoomRecord(code, body, Date.now())
         if ('error' in made) return json(400, { error: made.error })
         const res = await roomStub(env, code).fetch('https://room/init', { method: 'POST', body: JSON.stringify(made.record) })
         if (res.status === 201) return json(201, { code })
@@ -146,7 +185,15 @@ export class RoomObject extends DurableObject<Env> {
     for (const ws of this.ctx.getWebSockets()) this.hub.restore(this.peer(ws))
   }
 
+  /** While an alarm runs, wake-up requests are collected here and set once it finishes. */
+  private pendingWake: number | null = null
+  private inAlarm = false
+
   private async wakeAt(at: number) {
+    if (this.inAlarm) {
+      this.pendingWake = Math.min(this.pendingWake ?? at, at)
+      return
+    }
     const current = await this.ctx.storage.getAlarm()
     if (current === null || at < current) await this.ctx.storage.setAlarm(at)
   }
@@ -239,17 +286,36 @@ export class RoomObject extends DurableObject<Env> {
       this.hub = null
       return
     }
-    await this.hub?.tick()
-    await this.wakeAt(touched + ROOM_TTL_MS)
+    // The alarm that is running still counts as set until it returns, so collect what the
+    // tick asks for and set the next alarm explicitly afterwards.
+    this.inAlarm = true
+    this.pendingWake = null
+    try {
+      await this.hub?.tick()
+    } finally {
+      this.inAlarm = false
+    }
+    const latest = (await this.ctx.storage.get<number>('touched')) ?? touched
+    await this.ctx.storage.setAlarm(Math.min(this.pendingWake ?? Infinity, latest + ROOM_TTL_MS))
   }
 }
 
-/** One player's progress backup. */
+/** One player's progress backup, and the username they hold. */
 export class ProfileObject extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
-    const body = (await request.json()) as ProfileRequest
+    const body = (await request.json()) as ProfileRequest & { username?: string }
     const existing = (await this.ctx.storage.get<ProfileRecord>('profile')) ?? null
-    if (new URL(request.url).pathname === '/save') {
+    const path = new URL(request.url).pathname
+    if (path === '/username') {
+      // The device secret that first touched this profile owns it.
+      const owner = existing?.secretHash ?? (await this.ctx.storage.get<string>('owner'))
+      if (owner && owner !== hashSecret(body.secret)) return json(403, { error: 'That doesn’t match your device' })
+      if (!owner) await this.ctx.storage.put('owner', hashSecret(body.secret))
+      const previous = (await this.ctx.storage.get<string>('username')) ?? null
+      await this.ctx.storage.put('username', String(body.username))
+      return json(200, { previous })
+    }
+    if (path === '/save') {
       const r = applySave(existing, body.secret, body.data, Date.now())
       if ('error' in r) return json(r.status, { error: r.error })
       await this.ctx.storage.put('profile', r.record)
@@ -257,5 +323,26 @@ export class ProfileObject extends DurableObject<Env> {
     }
     const r = applyLoad(existing, body.secret)
     return 'error' in r ? json(r.status, { error: r.error }) : json(200, r)
+  }
+}
+
+/** One username, and the player who holds it. Keyed by the lower-cased name, so names are unique regardless of case. */
+export class UsernameObject extends DurableObject<Env> {
+  async fetch(request: Request): Promise<Response> {
+    const path = new URL(request.url).pathname
+    const existing = (await this.ctx.storage.get<UsernameRecord>('name')) ?? null
+    if (path === '/get') return json(200, existing)
+    const body = (await request.json()) as { id: string; secret?: string; display?: string }
+    if (path === '/claim') {
+      const r = applyClaim(existing, body.id, String(body.secret), String(body.display), Date.now())
+      if ('error' in r) return json(r.status, { error: r.error })
+      await this.ctx.storage.put('name', r.record)
+      return json(200, { ok: true })
+    }
+    if (path === '/release') {
+      if (existing?.playerId === body.id) await this.ctx.storage.delete('name')
+      return json(200, { ok: true })
+    }
+    return json(404, { error: 'Not found' })
   }
 }

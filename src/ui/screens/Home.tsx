@@ -4,13 +4,14 @@ import type { Game } from '../../engine/engine'
 import { msUntilNextDrop } from '../../engine/schedule'
 import { LEVEL_COUNT, levelDef } from '../../journey/levels'
 import { journeyComplete, loadJourney, totalStars } from '../../journey/progress'
-import { getMe, saveMe } from '../../net/identity'
+import { getMe } from '../../net/identity'
 import { restoreFromCode, saveCode, scheduleBackup } from '../../net/sync'
 import { normalizeCode, ROOM_CODE_LENGTH } from '../../net/protocol'
 import { checkRoom, createRoom } from '../../net/useRoom'
 import { registry } from '../../rules'
 import { ChunkyButton, PosterWord, Sheet, Toggle, ToastHost } from '../components/Bits'
-import { CreateGamePanel, NameField } from '../components/Coop'
+import { CreateGamePanel } from '../components/Coop'
+import { UsernameClaim } from '../components/Username'
 import { HelpPanel, ResultPanel } from '../components/Panels'
 import { formatDrop } from '../format'
 import { PRESETS } from '../motion/presets'
@@ -104,7 +105,8 @@ export function Home({ game }: { game: Game }) {
   const drop = rule.presentation
   const countdown = useDropCountdown()
   const [me, setMe] = useState(getMe)
-  const [sheet, setSheet] = useState<'none' | 'welcome' | 'create' | 'help' | 'stats' | 'profile'>(() => (hasOnboarded() ? 'none' : 'welcome'))
+  // Everyone needs a username: new players on first visit, and players from before usernames existed.
+  const [sheet, setSheet] = useState<'none' | 'welcome' | 'create' | 'help' | 'stats' | 'profile'>(() => (hasOnboarded() && getMe().claimed ? 'none' : 'welcome'))
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
@@ -129,10 +131,9 @@ export function Home({ game }: { game: Game }) {
   // The one thing to do next: an unplayed drop first (it expires), otherwise the Journey.
   const next: 'drop' | 'journey' = dropDone ? 'journey' : 'drop'
 
-  const updateName = (name: string) => {
-    const nextMe = { ...me, name }
-    setMe(nextMe)
-    saveMe({ ...nextMe, name: name.trim() })
+  /** A username was just reserved on the server. */
+  const onClaimed = () => {
+    setMe(getMe())
     scheduleBackup()
   }
 
@@ -141,10 +142,10 @@ export function Home({ game }: { game: Game }) {
     setSheet('none')
   }
 
-  const create = async (ruleId: string, minutes: number | null) => {
-    if (!me.name.trim()) return say('Add your name so friends know who’s playing')
+  const create = async (ruleId: string, minutes: number | null, turnSeconds: number | null) => {
+    if (!me.claimed) return say('Pick a username first so friends know who’s playing')
     setBusy(true)
-    const r = await createRoom(ruleId, minutes)
+    const r = await createRoom({ ruleId, minutes, turnSeconds, creatorId: me.id })
     setBusy(false)
     if ('error' in r) return say(r.error)
     navigate(`/room/${r.code}`)
@@ -319,24 +320,29 @@ export function Home({ game }: { game: Game }) {
           <p className="help-tagline">You know how to play. You don’t know the rule.</p>
           <ol className="help-list">
             <li>Guess the hidden word. Colours tell you how close you are.</li>
-            <li>Every 6 hours a new drop arrives with a new rule.</li>
+            <li>Every day a new drop arrives with a new rule.</li>
             <li>Climb the Journey, or play live with friends.</li>
           </ol>
-          <NameField value={me.name} onChange={updateName} />
-          <p className="result-note">A first name or nickname. Friends you play with see it, and it stays on this device.</p>
-          <ChunkyButton onClick={finishWelcome} className="play-btn">
-            {me.name.trim() ? `Let’s go, ${me.name.trim()}` : 'Let’s go'}
-          </ChunkyButton>
-          <button type="button" className="link-btn" onClick={finishWelcome}>
-            Skip for now
-          </button>
+          <p className="result-note">Pick a unique username. Friends see it when you play together, and your progress is saved with it on this device.</p>
+          <UsernameClaim
+            cta="Claim it and start playing"
+            onClaimed={() => {
+              onClaimed()
+              finishWelcome()
+            }}
+          />
+          {!navigator.onLine && (
+            <button type="button" className="link-btn" onClick={finishWelcome}>
+              You’re offline. Play now, pick a username later
+            </button>
+          )}
         </div>
       </Sheet>
       <Sheet open={sheet === 'profile'} onClose={() => setSheet('none')} label="Your profile">
         <div className="help">
           <span className="kicker">Your profile</span>
-          <PosterWord text={(me.name.trim() || 'You').toUpperCase().slice(0, 10)} className="help-word" />
-          <NameField value={me.name} onChange={updateName} />
+          <PosterWord text={me.claimed ? `@${me.name}`.toUpperCase().slice(0, 12) : 'YOU'} className="help-word" />
+          <UsernameClaim cta={me.claimed ? 'Change username' : 'Claim username'} onClaimed={onClaimed} />
           <div className="stat-grid">
             {[
               ['Streak', streak.current],
@@ -364,7 +370,7 @@ export function Home({ game }: { game: Game }) {
         </div>
       </Sheet>
       <Sheet open={sheet === 'create'} onClose={() => setSheet('none')} label="Play with friends">
-        <CreateGamePanel name={me.name} onName={updateName} rules={rules} defaultRule={rule.id === 'liar' ? 'standard' : rule.id} busy={busy} onCreate={create} />
+        <CreateGamePanel username={me.claimed ? me.name : null} onClaimed={onClaimed} rules={rules} defaultRule={rule.id === 'liar' ? 'standard' : rule.id} busy={busy} onCreate={create} />
       </Sheet>
       <Sheet open={sheet === 'help'} onClose={() => setSheet('none')} label="How to play">
         <HelpPanel game={game} preset={PRESETS[drop.motion]} rules={practice} />

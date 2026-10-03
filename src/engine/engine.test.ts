@@ -59,22 +59,22 @@ describe('engine', () => {
 
 describe('schedule', () => {
   it('is deterministic for a drop', () => {
-    const a = resolvePuzzle({ slot: '2026-10-05T12', schedule: config, registry, dictionary })
-    const b = resolvePuzzle({ slot: '2026-10-05T12', schedule: config, registry, dictionary })
+    const a = resolvePuzzle({ slot: '2026-10-05T00', schedule: config, registry, dictionary })
+    const b = resolvePuzzle({ slot: '2026-10-05T00', schedule: config, registry, dictionary })
     expect(a).toEqual(b)
   })
 
-  it('drops every six hours, each with a different rule', () => {
-    expect(currentSlot(Date.parse('2026-10-03T13:45:00Z'))).toBe('2026-10-03T12')
+  it('drops once a day at midnight UTC, with a new rule each day', () => {
+    expect(currentSlot(Date.parse('2026-10-03T13:45:00Z'))).toBe('2026-10-03T00')
     expect(normalizeSlot('2026-10-03')).toBe('2026-10-03T00')
-    expect(msUntilNextDrop(Date.parse('2026-10-03T13:45:00Z'))).toBe(4.25 * 3_600_000)
-    const day = [0, 1, 2, 3].map((i) => ruleIdForSlot(addSlots('2026-10-06T00', i), config, registry))
-    expect(new Set(day).size).toBe(4)
+    expect(msUntilNextDrop(Date.parse('2026-10-03T13:45:00Z'))).toBe(10.25 * 3_600_000)
+    const week = [0, 1, 2, 3, 4, 5, 6].map((i) => ruleIdForSlot(addSlots('2026-10-06T00', i), config, registry))
+    expect(new Set(week).size).toBe(7)
   })
 
   it('never schedules a flagged-off rule', () => {
-    const cfg: ScheduleConfig = { ...config, overrides: { '2026-10-04T06': { rule: 'liar' } } }
-    expect(ruleIdForSlot('2026-10-04T06', cfg, registry)).toBe('standard')
+    const cfg: ScheduleConfig = { ...config, overrides: { '2026-10-04T00': { rule: 'liar' } } }
+    expect(ruleIdForSlot('2026-10-04T00', cfg, registry)).toBe('standard')
   })
 
   it('does not repeat an answer within a rule for a long stretch', () => {
@@ -98,8 +98,8 @@ describe('schedule', () => {
 
   it('resolves every rule to a puzzle', () => {
     for (const rule of registry.all()) {
-      const p = resolvePuzzle({ slot: '2026-10-03T06', schedule: config, registry, dictionary, forceRuleId: rule.id })
-      expect(p.answer.word).toMatch(/^[A-Z]{5}$/)
+      const p = resolvePuzzle({ slot: '2026-10-03T00', schedule: config, registry, dictionary, forceRuleId: rule.id })
+      expect(p.answer.word).toMatch(/^[A-Z]{4,6}$/)
       const game = createGame(rule, p, dictionary)
       expect(game.validate(p.answer.word, game.newState())).toEqual({ ok: true })
     }
@@ -155,20 +155,21 @@ describe('rules', () => {
     pool.slice(1).forEach((x, i) => expect(x.categoryId).not.toBe(pool[i].categoryId))
   })
 
-  it('category: a year of drops never repeats an answer', () => {
+  it('category: three years of drops never repeat an answer', () => {
     const seen = new Set<string>()
-    for (let i = 0; i < 365 * 4; i++) {
+    for (let i = 0; i < 365 * 3; i++) {
       const p = resolvePuzzle({ slot: addSlots('2026-01-01T00', i), schedule: { ...config, overrides: {} }, registry, dictionary })
       if (p.ruleId !== 'category') continue
       expect(seen.has(p.answer.word)).toBe(false)
       seen.add(p.answer.word)
     }
-    expect(seen.size).toBeGreaterThan(200)
+    // About one Category day a week for three years.
+    expect(seen.size).toBeGreaterThan(150)
   })
 
   it('relay variants get their own answer and never count', () => {
-    const daily = resolvePuzzle({ slot: '2026-10-03T06', schedule: config, registry, dictionary, forceRuleId: 'standard' })
-    const relay = resolvePuzzle({ slot: '2026-10-03T06', schedule: config, registry, dictionary, forceRuleId: 'standard', variant: 'abc123' })
+    const daily = resolvePuzzle({ slot: '2026-10-03T00', schedule: config, registry, dictionary, forceRuleId: 'standard' })
+    const relay = resolvePuzzle({ slot: '2026-10-03T00', schedule: config, registry, dictionary, forceRuleId: 'standard', variant: 'abc123' })
     expect(relay.id).not.toBe(daily.id)
     expect(relay.preview).toBe(true)
   })

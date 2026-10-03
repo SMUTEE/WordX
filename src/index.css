@@ -531,3 +531,22 @@ html[data-contrast='high'] .swatch-correct { border-radius: 50%; }
 
 .save-code { display: grid; gap: 10px; border-top: 2px solid var(--black); padding-top: 14px; }
 .save-code-value { display: block; font-size: 15px; font-weight: 800; letter-spacing: 0.06em; word-break: break-all; background: var(--paper); border: 2px dashed var(--black); border-radius: 10px; padding: 10px 12px; }
+
+.turn-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.waiting-invite { width: 100%; font-size: 16px; padding: 10px; }
+
+.quit-links { display: flex; justify-content: center; gap: 18px; }
+.quit-links .give-up { margin: 6px 0 0; }
+.watching-note { text-align: center; margin: -4px 0 0; }
+
+/* ---------- Usernames ---------- */
+.username-claim { display: grid; gap: 10px; }
+.username-input-wrap { position: relative; display: block; }
+.username-at { position: absolute; left: 12px; top: 50%; transform: translateY(-55%); font-weight: 900; font-size: 17px; color: #777; pointer-events: none; }
+.username-input { padding-left: 30px; }
+.username-status { font-size: 13px; font-weight: 800; }
+.username-available { color: #0B7A3B; }
+.username-taken, .username-invalid { color: #B00020; }
+.player-out { text-decoration: line-through; opacity: 0.55; }
+.playing-as { margin: 0; font-size: 15px; font-weight: 700; }
+.playing-as strong { font-weight: 900; }

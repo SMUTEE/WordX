@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { defaultDictionary } from '../../engine/dictionary'
 import { createGame } from '../../engine/engine'
-import { getMe, saveMe } from '../../net/identity'
+import { getMe } from '../../net/identity'
 import { roomPuzzle } from '../../net/roomState'
 import { useRoom } from '../../net/useRoom'
 import { registry } from '../../rules'
@@ -23,11 +23,11 @@ export function RoomScreen({ code }: { code: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room?.code, room?.ruleId])
 
-  const onName = (name: string) => {
-    const next = { ...me, name }
+  /** Claimed a username from the room's intro: use it here straight away. */
+  const onClaimed = () => {
+    const next = getMe()
     setMe(next)
-    saveMe({ ...next, name: name.trim() })
-    if (name.trim()) api.rename(name.trim())
+    api.rename(next.name)
   }
 
   if (api.error) return <RoomMessage title="NO GAME" text={api.error.message} />
@@ -40,7 +40,7 @@ export function RoomScreen({ code }: { code: string }) {
       />
     )
   }
-  return <GameScreen key={room.code} game={game} coop={{ api, me, name: me.name, onName }} />
+  return <GameScreen key={room.code} game={game} coop={{ api, me, username: me.claimed ? me.name : null, onClaimed }} />
 }
 
 function RoomMessage({ title, text, busy }: { title: string; text: string; busy?: boolean }) {
