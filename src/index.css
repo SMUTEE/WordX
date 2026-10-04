@@ -595,7 +595,7 @@ html[data-contrast='high'] .swatch-correct { border-radius: 50%; }
 .result-home { font-size: 15px; padding: 6px 12px; }
 
 /* ---------- Stats (/admin) ---------- */
-.admin { min-height: 100dvh; background: #F4F1EA; color: #111; padding: 20px 16px 48px; max-width: 980px; margin: 0 auto; display: grid; gap: 14px; align-content: start; }
+.admin { height: 100dvh; overflow-y: auto; box-sizing: border-box; background: #F4F1EA; color: #111; padding: 20px max(16px, calc((100% - 948px) / 2)) 48px; display: grid; gap: 14px; align-content: start; }
 .admin-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .admin-head h1 { margin: 0; font-size: 44px; font-weight: 900; font-stretch: 68%; letter-spacing: -0.04em; line-height: 0.9; flex: 1; }
 .admin-wordmark { background: none; border: 0; padding: 0; font: inherit; font-size: 17px; font-weight: 900; font-stretch: 75%; color: #111; cursor: pointer; }
@@ -697,7 +697,7 @@ html[data-contrast='high'] .swatch-correct { border-radius: 50%; }
 }
 
 /* ---------- How it works (/how-to-play) ---------- */
-.how { min-height: 100dvh; background: #F4F1EA; color: #111; padding: 16px max(16px, calc((100% - 528px) / 2)) 120px; display: grid; gap: 18px; align-content: start; }
+.how { height: 100dvh; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; background: #F4F1EA; color: #111; padding: 16px max(16px, calc((100% - 528px) / 2)) 120px; display: grid; gap: 18px; align-content: start; }
 .how-top { display: flex; align-items: center; gap: 12px; }
 .how-back { color: #111; }
 .how-hero { display: grid; gap: 8px; margin-top: 8px; }
