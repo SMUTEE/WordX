@@ -15,6 +15,9 @@
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--black); overflow: hidden; transition: background 0.6s; }
+/* Landing and stats pages scroll like normal web pages (game screens manage their own scrolling). */
+html.page-scroll, html.page-scroll body, html.page-scroll #root { height: auto; min-height: 100%; }
+html.page-scroll body { overflow: visible; overflow-x: hidden; background: #F4F1EA; }
 button { font: inherit; color: inherit; cursor: pointer; }
 :focus-visible { outline: 3px solid var(--black); outline-offset: 3px; }
 .ink-light :focus-visible { outline-color: #fff; }
@@ -595,7 +598,7 @@ html[data-contrast='high'] .swatch-correct { border-radius: 50%; }
 .result-home { font-size: 15px; padding: 6px 12px; }
 
 /* ---------- Stats (/admin) ---------- */
-.admin { height: 100dvh; overflow-y: auto; box-sizing: border-box; background: #F4F1EA; color: #111; padding: 20px max(16px, calc((100% - 948px) / 2)) 48px; display: grid; gap: 14px; align-content: start; }
+.admin { min-height: 100dvh; box-sizing: border-box; background: #F4F1EA; color: #111; padding: 20px max(16px, calc((100% - 948px) / 2)) 48px; display: grid; gap: 14px; align-content: start; }
 .admin-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .admin-head h1 { margin: 0; font-size: 44px; font-weight: 900; font-stretch: 68%; letter-spacing: -0.04em; line-height: 0.9; flex: 1; }
 .admin-wordmark { background: none; border: 0; padding: 0; font: inherit; font-size: 17px; font-weight: 900; font-stretch: 75%; color: #111; cursor: pointer; }
@@ -696,38 +699,89 @@ html[data-contrast='high'] .swatch-correct { border-radius: 50%; }
   .credit-pop { animation: credit-fade 200ms ease-out both; }
 }
 
-/* ---------- How it works (/how-to-play) ---------- */
-.how { height: 100dvh; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; background: #F4F1EA; color: #111; padding: 16px max(16px, calc((100% - 528px) / 2)) 120px; display: grid; gap: 18px; align-content: start; }
-.how-top { display: flex; align-items: center; gap: 12px; }
-.how-back { color: #111; }
-.how-hero { display: grid; gap: 8px; margin-top: 8px; }
-.how-title { margin: 0; display: grid; font-size: clamp(54px, 17vw, 88px); font-weight: 900; font-stretch: 68%; letter-spacing: -0.045em; line-height: 0.86; }
-.how-lede { margin: 6px 0 0; font-size: 19px; font-weight: 800; line-height: 1.2; text-wrap: balance; }
-.how-block { background: #fff; border: 2px solid #111; border-bottom-width: 6px; border-radius: 18px; padding: 16px; display: grid; gap: 10px; }
-.how-block p { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.45; }
-.how-step { margin: 0; display: flex; align-items: center; gap: 10px; font-size: 26px; font-weight: 900; font-stretch: 75%; letter-spacing: -0.02em; line-height: 1; }
-.how-n { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: #111; color: #fff; font-size: 18px; flex: none; }
-.how-example { display: flex; justify-content: center; padding: 6px 0; }
-.how-legend, .how-tips { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 15px; font-weight: 600; }
-.how-legend li { display: flex; align-items: center; gap: 8px; }
-.how-legend strong { width: 58px; font-weight: 900; }
-.how-swatch { width: 18px; height: 18px; border-radius: 5px; border: 2px solid #111; flex: none; }
-.how-small { font-size: 13px !important; opacity: 0.7; }
-.how-rules { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.how-rule { border: 2px solid #111; border-bottom-width: 4px; border-radius: 12px; padding: 10px; display: grid; gap: 3px; align-content: start; }
-.how-rule strong { font-size: 20px; font-weight: 900; font-stretch: 75%; text-transform: uppercase; letter-spacing: -0.01em; }
-.how-rule span { font-size: 12px; font-weight: 700; line-height: 1.3; }
-.how-modes { display: grid; gap: 10px; }
-.how-mode { border: 2px solid #111; border-bottom-width: 4px; border-radius: 14px; padding: 12px 14px; display: grid; gap: 4px; }
-.how-mode strong { font-size: 22px; font-weight: 900; font-stretch: 75%; }
-.how-mode p { font-size: 14px !important; }
-.how-mode-drop { background: #2E5BFF; color: #fff; }
-.how-mode-journey { background: #FFD21F; }
-.how-mode-friends { background: #111; color: #fff; }
-.how-tips li { padding-left: 2px; }
-.how-foot { display: grid; justify-items: center; }
-.how-cta {
+/* ---------- Landing page (/how-to-play) ---------- */
+.land { min-height: 100dvh; background: #F4F1EA; color: #111; }
+.land-hero { min-height: 100dvh; box-sizing: border-box; padding: 16px max(16px, calc((100% - 1040px) / 2)) 32px; display: grid; grid-template-rows: auto 1fr; transition: background 0.7s ease, color 0.4s; }
+.land-top { display: flex; align-items: center; justify-content: space-between; }
+.land-top .wordmark { color: inherit; }
+.land-top-link { background: transparent; border: 2px solid currentColor; border-radius: 99px; padding: 6px 16px; font: inherit; font-weight: 900; font-size: 14px; color: inherit; cursor: pointer; }
+.land-hero-grid { display: grid; gap: 28px; align-content: center; padding-top: 18px; }
+.land-title { margin: 0; display: grid; font-size: clamp(52px, 15.5vw, 112px); font-weight: 900; font-stretch: 68%; letter-spacing: -0.045em; line-height: 0.86; }
+.land-sub { margin: 14px 0 0; font-size: clamp(17px, 4.6vw, 22px); font-weight: 800; line-height: 1.25; max-width: 30ch; text-wrap: balance; }
+.land-cta { display: grid; gap: 8px; margin-top: 18px; max-width: 360px; }
+.land-cta .play-btn { width: 100%; }
+.land-note { font-size: 13px; font-weight: 800; opacity: 0.75; text-align: center; }
+.land-demo { display: grid; gap: 6px; justify-items: start; }
+.land-demo-kicker { font-size: 12px; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.8; }
+.land-demo-rule { display: block; font-size: clamp(44px, 13vw, 76px); font-weight: 900; font-stretch: 68%; letter-spacing: -0.04em; line-height: 0.9; }
+.land-demo-tag { margin: 0 0 6px; font-size: 16px; font-weight: 800; }
+.land-demo-card {
+  display: grid; gap: 10px; justify-items: center; width: 100%; max-width: 420px; box-sizing: border-box; padding: 16px;
+  background: #fff; color: #111; border: 2px solid #111; border-bottom-width: 6px; border-radius: 18px; transform: rotate(-1deg);
+}
+.land-demo-card > span { font-size: 13px; font-weight: 700; text-align: center; }
+.land-dots { display: flex; gap: 6px; margin-top: 8px; }
+.land-dots i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: 0.3; transition: opacity 0.3s, transform 0.3s; }
+.land-dots i.on { opacity: 1; transform: scale(1.3); }
+
+.land-section { padding: 56px max(16px, calc((100% - 1040px) / 2)); display: grid; gap: 22px; }
+.land-dark { background: #111; color: #fff; }
+.land-head { display: grid; gap: 8px; max-width: 640px; }
+.land-head h2 { margin: 0; font-size: clamp(34px, 9vw, 58px); font-weight: 900; font-stretch: 70%; letter-spacing: -0.035em; line-height: 0.92; }
+.land-head p { margin: 4px 0 0; font-size: 17px; font-weight: 600; line-height: 1.45; }
+.land-kicker { font-size: 12px; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.65; }
+.land-steps { display: grid; gap: 12px; }
+.land-step { background: #fff; border: 2px solid #111; border-bottom-width: 5px; border-radius: 16px; padding: 16px; display: grid; gap: 6px; }
+.land-step-n { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: #111; color: #fff; font-weight: 900; }
+.land-step strong { font-size: 22px; font-weight: 900; font-stretch: 78%; }
+.land-step p { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.4; }
+.land-rules { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.land-rule { border: 2px solid #fff; border-bottom-width: 5px; border-radius: 14px; padding: 12px; display: grid; gap: 4px; align-content: start; min-height: 96px; }
+.land-rule strong { font-size: 24px; font-weight: 900; font-stretch: 72%; text-transform: uppercase; letter-spacing: -0.02em; }
+.land-rule span { font-size: 13px; font-weight: 700; line-height: 1.3; }
+.land-mode { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: center; border: 2px solid #111; border-bottom-width: 6px; border-radius: 22px; padding: 18px 18px 0; overflow: hidden; }
+.land-mode-copy { display: grid; gap: 6px; }
+.land-mode-copy strong { font-size: clamp(34px, 9vw, 48px); font-weight: 900; font-stretch: 70%; letter-spacing: -0.03em; line-height: 0.95; }
+.land-mode-copy p { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.45; }
+.land-mode-shot { display: flex; justify-content: center; }
+.land-mode-shot img { width: min(260px, 70%); height: auto; display: block; border: 3px solid #111; border-bottom: 0; border-radius: 22px 22px 0 0; background: #F4F1EA; }
+.land-mode-drop { background: #2E5BFF; color: #fff; }
+.land-mode-journey { background: #FFD21F; }
+.land-mode-friends { background: #111; color: #fff; }
+.land-mode-friends .land-mode-shot img, .land-mode-drop .land-mode-shot img { border-color: #fff; }
+.land-facts { display: grid; grid-template-columns: 1fr 1fr; border-top: 2px solid #111; border-bottom: 2px solid #111; }
+.land-fact { padding: 22px 16px; display: grid; gap: 2px; align-content: start; border-right: 2px solid #111; border-bottom: 2px solid #111; }
+.land-fact:nth-child(2n) { border-right: 0; }
+.land-fact:last-child { grid-column: 1 / -1; border-right: 0; border-bottom: 0; }
+.land-fact strong { font-size: 44px; font-weight: 900; font-stretch: 70%; letter-spacing: -0.03em; line-height: 1; }
+.land-fact span { font-size: 13px; font-weight: 800; opacity: 0.7; }
+.land-tips { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.land-tip { background: #fff; border: 2px solid #111; border-bottom-width: 4px; border-radius: 14px; padding: 12px; display: grid; gap: 4px; }
+.land-tip strong { font-size: 18px; font-weight: 900; }
+.land-tip span { font-size: 13px; font-weight: 600; line-height: 1.35; }
+.land-final { padding: 64px max(16px, calc((100% - 1040px) / 2)) 48px; background: #FFD21F; display: grid; }
+.land-final h2 { margin: 0; display: grid; font-size: clamp(46px, 13vw, 96px); font-weight: 900; font-stretch: 68%; letter-spacing: -0.045em; line-height: 0.88; }
+.land-final p { margin: 14px 0 18px; font-size: 18px; font-weight: 800; }
+.land-final .play-btn { width: 100%; max-width: 360px; }
+.land-foot { padding: 24px 16px 110px; display: grid; gap: 10px; justify-items: center; }
+.land-foot nav { display: flex; gap: 16px; }
+.land-bar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
   background: linear-gradient(to top, #F4F1EA 70%, rgba(244,241,234,0)); display: flex; justify-content: center;
 }
-.how-cta .play-btn { width: 100%; max-width: 528px; }
+.land-bar .play-btn { width: 100%; max-width: 420px; }
+
+@media (min-width: 820px) {
+  .land-hero-grid { grid-template-columns: 1.15fr 1fr; align-items: center; gap: 48px; }
+  .land-steps { grid-template-columns: repeat(3, 1fr); }
+  .land-rules { grid-template-columns: repeat(4, 1fr); }
+  .land-tips { grid-template-columns: repeat(4, 1fr); }
+  .land-facts { grid-template-columns: repeat(5, 1fr); padding: 0 max(0px, calc((100% - 1072px) / 2)); }
+  .land-fact, .land-fact:nth-child(2n) { border-bottom: 0; border-right: 2px solid #111; }
+  .land-fact:last-child { grid-column: auto; border-right: 0; }
+  .land-mode { grid-template-columns: 1fr 1fr; padding: 28px 32px 0; gap: 32px; }
+  .land-mode-flip .land-mode-copy { order: 2; }
+  .land-mode-copy { align-self: center; padding-bottom: 28px; }
+  .land-bar { display: none; }
+  .land-foot { padding-bottom: 32px; }
+}

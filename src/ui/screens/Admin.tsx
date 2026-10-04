@@ -3,6 +3,7 @@ import type { DayCount, StatsView } from '../../net/statsView'
 import { stageOf } from '../../journey/levels'
 import { registry } from '../../rules'
 import { navigate } from '../router'
+import { usePageScroll } from '../usePageScroll'
 
 const KEY = 'wordx:admin-key'
 const loadKey = () => {
@@ -23,6 +24,7 @@ const ago = (at: number) => {
 
 /** The private stats page: who's playing and how. Unlocked with the admin key. */
 export default function AdminScreen() {
+  usePageScroll()
   const [key, setKey] = useState(loadKey)
   const [draft, setDraft] = useState('')
   const [data, setData] = useState<StatsView | null>(null)
