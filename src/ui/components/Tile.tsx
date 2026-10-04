@@ -19,9 +19,11 @@ interface TileProps {
   entering: boolean
   size: number
   emptyBorder: string
+  /** A typed letter you can tap to clear. */
+  onTap?(): void
 }
 
-export function Tile({ letter, status, mark, preset, row, col, reveal, celebrate, entering, size, emptyBorder }: TileProps) {
+export function Tile({ letter, status, mark, preset, row, col, reveal, celebrate, entering, size, emptyBorder, onTap }: TileProps) {
   const [scope, animate] = useAnimate<HTMLDivElement>()
   const reduce = useReducedMotion()
   const [settled, setSettled] = useState(!reveal)
@@ -94,7 +96,15 @@ export function Tile({ letter, status, mark, preset, row, col, reveal, celebrate
 
   return (
     <div className="tile-wrap" style={{ width: size, height: size }}>
-      <div ref={scope} className={`tile tile-${status}`} style={style} data-mark={face ? mark ?? 'none' : undefined}>
+      <div
+        ref={scope}
+        className={`tile tile-${status}${onTap ? ' tile-tappable' : ''}`}
+        style={style}
+        data-mark={face ? mark ?? 'none' : undefined}
+        {...(onTap
+          ? { role: 'button', tabIndex: 0, 'aria-label': `Remove ${letter}`, onClick: onTap, onKeyDown: (e: React.KeyboardEvent) => e.key === ' ' && (e.preventDefault(), onTap()) }
+          : {})}
+      >
         {letter && (
           <motion.span
             key={letter}

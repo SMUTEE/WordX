@@ -15,7 +15,7 @@ export interface Toast {
 }
 
 /** Merges typed letters into the open (unlocked) slots of a row. */
-export function compose(length: number, locks: Record<number, string>, typed: string): string[] {
+export function compose(length: number, locks: Record<number, string>, typed: ArrayLike<string>): string[] {
   const out: string[] = []
   let k = 0
   for (let i = 0; i < length; i++) out.push(locks[i] ?? typed[k++] ?? '')
@@ -62,7 +62,15 @@ export function useGame(game: Game, preset: MotionPreset, options: GameOptions =
     [game, onFinished],
   )
   const [state, setState] = useState<GameState>(() => remote?.state ?? loadSession(game.puzzle.id) ?? game.newState())
-  const [typed, setTyped] = useState('')
+  // Letters typed into the open slots, one per slot ('' = empty), so any one can be cleared.
+  const [typed, setTyped] = useState<string[]>([])
+  // A different puzzle on the same screen (a Journey level switching difficulty): start it fresh.
+  const [stateFor, setStateFor] = useState(game.puzzle.id)
+  if (stateFor !== game.puzzle.id) {
+    setStateFor(game.puzzle.id)
+    setState(remote?.state ?? loadSession(game.puzzle.id) ?? game.newState())
+    setTyped([])
+  }
   const [revealingRow, setRevealingRow] = useState<number | null>(null)
   const [shakeNonce, setShakeNonce] = useState(0)
   const [keyShake, setKeyShake] = useState({ letters: [] as string[], nonce: 0 })
@@ -149,15 +157,52 @@ export function useGame(game: Game, preset: MotionPreset, options: GameOptions =
         say(ks === 'burned' ? `${letter} has burned out` : `You can’t use ${letter} today`)
         return
       }
-      setTyped((t) => (t.length < openSlots ? t + letter : t))
+      // Fill the first empty slot: after clearing one in the middle, that's where the letter goes.
+      setTyped((t) => {
+        for (let k = 0; k < openSlots; k++) {
+          if (!t[k]) {
+            const next = [...t]
+            next[k] = letter
+            return next
+          }
+        }
+        return t
+      })
     },
     [game, state, openSlots, say, remote?.lockedReason],
   )
 
   const onBack = useCallback(() => {
     if (busy.current) return
-    setTyped((t) => t.slice(0, -1))
+    setTyped((t) => {
+      const next = [...t]
+      for (let k = next.length - 1; k >= 0; k--) {
+        if (next[k]) {
+          next[k] = ''
+          break
+        }
+      }
+      while (next.length && !next[next.length - 1]) next.pop()
+      return next
+    })
   }, [])
+
+  /** Clears the letter in one column of the open row (tapping a tile). Hint-locked letters stay. */
+  const clearAt = useCallback(
+    (col: number) => {
+      if (busy.current || state.status !== 'playing' || locks[col] || remote?.lockedReason) return
+      let k = 0
+      for (let i = 0; i < col; i++) if (!locks[i]) k++
+      setTyped((t) => {
+        if (!t[k]) return t
+        const next = [...t]
+        next[k] = ''
+        while (next.length && !next[next.length - 1]) next.pop()
+        return next
+      })
+    },
+    [state.status, locks, remote?.lockedReason],
+  )
 
   const refuse = useCallback(
     (message: string, letters?: string[], free = true) => {
@@ -182,7 +227,7 @@ export function useGame(game: Game, preset: MotionPreset, options: GameOptions =
       const result = await remote.submit(word)
       setSending(false)
       busy.current = false
-      if (result.ok) setTyped('')
+      if (result.ok) setTyped([])
       else if (result.code === 'timeout' || result.code === 'offline') say('Couldn’t send that guess', 'Check your connection and try again')
       else refuse(result.message)
       return
@@ -191,7 +236,7 @@ export function useGame(game: Game, preset: MotionPreset, options: GameOptions =
     const result = game.submit(state, word)
     if (!result.accepted) return refuse(result.error.message, result.error.letters, result.error.code !== 'finished')
     saveSession(result.state)
-    setTyped('')
+    setTyped([])
     reveal(result.state, state.guesses.length)
   }, [game, state, locks, typed, remote, say, refuse, reveal])
 
@@ -207,7 +252,7 @@ export function useGame(game: Game, preset: MotionPreset, options: GameOptions =
     setState(r.state)
     saveSession(r.state)
     // A revealed letter takes its slot, so letters typed so far shift to the open slots.
-    setTyped('')
+    setTyped([])
   }, [game, state, remote, say])
 
   /** Ends a solo game early. Co-op asks the server, which tells everyone. */
@@ -220,7 +265,7 @@ export function useGame(game: Game, preset: MotionPreset, options: GameOptions =
       }
       const next = game.forfeit(state, reason)
       saveSession(next)
-      setTyped('')
+      setTyped([])
       setState(next)
       finish(next)
     },
@@ -295,6 +340,7 @@ export function useGame(game: Game, preset: MotionPreset, options: GameOptions =
     startTimer,
     onKey,
     onBack,
+    clearAt,
     onEnter,
   }
 }

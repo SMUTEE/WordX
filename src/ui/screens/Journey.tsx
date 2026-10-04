@@ -1,12 +1,13 @@
 import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { LEVEL_COUNT, LEVELS, STAGES, levelDef, levelGame, poolSize } from '../../journey/levels'
-import { loadJourney, recordLevel, totalStars } from '../../journey/progress'
+import { DIFFICULTIES, LEVEL_COUNT, LEVELS, STAGES, levelDef, levelGame, levelPuzzleId, poolSize, type Difficulty } from '../../journey/levels'
+import { loadDifficulty, loadJourney, recordLevel, saveDifficulty, totalPoints, totalStars } from '../../journey/progress'
 import { getMe } from '../../net/identity'
 import { registry } from '../../rules'
 import { PosterWord, ToastHost } from '../components/Bits'
 import { StarRow } from '../components/Panels'
 import { navigate } from '../router'
+import { loadSession } from '../storage'
 import type { Toast } from '../useGame'
 import { Chrome } from './Chrome'
 import { GameScreen } from './GameScreen'
@@ -43,12 +44,16 @@ export function JourneyMap() {
             ★ {totalStars(progress)}
             <span>/{LEVEL_COUNT * 3}</span>
           </span>
+          <span className="journey-score journey-points" aria-label={`${totalPoints(progress)} points`}>
+            {totalPoints(progress).toLocaleString()}
+            <span> pts</span>
+          </span>
         </header>
         <h1 className="intro-title journey-title">
           <PosterWord text="JOURNEY" delay={0.1} />
         </h1>
         <p className="journey-sub">
-          {LEVEL_COUNT} levels in four stages. Clear one to unlock the next. Every try gets a fresh word picked for you.
+          {LEVEL_COUNT} levels in {STAGES.length} stages. Clear one to unlock the next. Play on Scholar for 1.6× points.
         </p>
 
         {STAGES.map((stage, si) => {
@@ -78,8 +83,8 @@ export function JourneyMap() {
                   Stage {si + 1} · Levels {stage.from}–{stage.to}
                 </span>
                 <span className="stage-name">{stage.name}</span>
-                <span className="stage-stars" aria-label={`${stageStars} of 15 stars`}>
-                  ★ {stageStars}/15
+                <span className="stage-stars" aria-label={`${stageStars} of ${levels.length * 3} stars`}>
+                  ★ {stageStars}/{levels.length * 3}
                 </span>
                 <span className="stage-blurb">{stageLocked ? `Clear level ${stage.from - 1} to open this stage` : stage.blurb}</span>
               </header>
@@ -117,7 +122,7 @@ export function JourneyMap() {
                         ref={isCurrent ? currentRef : undefined}
                         type="button"
                         className={`node${locked ? ' node-locked' : ''}${isCurrent ? ' node-current' : ''}${stars ? ' node-done' : ''}`}
-                        aria-label={`Level ${def.n}, ${def.title}, ${rule.presentation.name}${locked ? ', locked' : stars ? `, ${stars} stars` : ''}`}
+                        aria-label={`Level ${def.n}, ${def.title}, rule: ${rule.presentation.name}${locked ? ', locked' : stars ? `, ${stars} stars` : ''}`}
                         whileTap={{ y: 4 }}
                         onClick={() => (locked ? say(`Clear level ${def.n - 1} first`) : navigate(`/journey/${def.n}`))}
                       >
@@ -135,7 +140,8 @@ export function JourneyMap() {
                         <strong>{def.title}</strong>
                         <span>
                           <i className="node-rule-dot" style={{ background: rule.presentation.theme.bg }} aria-hidden="true" />
-                          {rule.presentation.name}
+                          Rule: {rule.presentation.name}
+                          {progress.cleared[def.n] === 'scholar' && <em className="node-scholar">Scholar</em>}
                         </span>
                       </span>
                       {stars > 0 && <StarRow stars={stars} size={16} />}
@@ -156,12 +162,30 @@ export function JourneyMap() {
 }
 
 /** One level: a fresh word for this player and attempt, played on the usual game screen. */
+/** The difficulty an attempt was started on, if any guesses were made: it can't change mid-word. */
+function startedOn(n: number, attempt: number): Difficulty | null {
+  return DIFFICULTIES.map((d) => d.id).find((d) => (loadSession(levelPuzzleId(n, attempt, d))?.guesses.length ?? 0) > 0) ?? null
+}
+
 export function LevelScreen({ n }: { n: number }) {
   const def = levelDef(n)
   const [me] = useState(getMe)
   const [attempt, setAttempt] = useState(() => loadJourney().attempts[n] ?? 0)
+  const started = startedOn(n, attempt)
+  const [picked, setPicked] = useState<Difficulty>(loadDifficulty)
+  const difficulty = started ?? picked
   const unlocked = loadJourney().unlocked >= n
-  const game = useMemo(() => (def ? levelGame(def, attempt, me.id) : null), [def, attempt, me.id])
+  const game = useMemo(() => (def ? levelGame(def, attempt, me.id, difficulty) : null), [def, attempt, me.id, difficulty])
+  // Easy's clues are a separate download, fetched only when someone plays on Easy.
+  const [clues, setClues] = useState<Record<string, string> | null>(null)
+  useEffect(() => {
+    if (difficulty !== 'easy' || clues) return
+    let live = true
+    import('../../data/clues.generated').then((m) => live && setClues(m.CLUES))
+    return () => {
+      live = false
+    }
+  }, [difficulty, clues])
 
   useEffect(() => {
     if (!def || !unlocked) navigate('/journey', { replace: true })
@@ -170,13 +194,22 @@ export function LevelScreen({ n }: { n: number }) {
 
   return (
     <GameScreen
-      key={game.puzzle.id}
+      // Keyed on the attempt, not the difficulty: switching difficulty on the intro keeps the screen.
+      key={`journey:${n}:${attempt}`}
       game={game}
       level={{
         def,
         isLast: n === LEVEL_COUNT,
+        difficulty,
+        clue: difficulty === 'easy' ? (clues?.[game.puzzle.answer.word] ?? undefined) : undefined,
+        onDifficulty: started
+          ? undefined
+          : (d) => {
+              saveDifficulty(d)
+              setPicked(d)
+            },
         // Saving bumps the attempt count, but this screen keeps its word until you choose to retry.
-        onFinished: (state) => recordLevel(n, state, game.setup),
+        onFinished: (state) => recordLevel(n, state, game.setup, difficulty),
         onNext: () => navigate(`/journey/${n + 1}`),
         onRetry: () => setAttempt(loadJourney().attempts[n] ?? 0),
       }}

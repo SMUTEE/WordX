@@ -8,7 +8,8 @@ import type { Feedback, GameState, Hint, HintReveal, LegendSwatch, RulePresentat
 import { METER_SECONDS, PRESETS, type MotionPreset } from '../motion/presets'
 import { share, shareText } from '../share'
 import { liveStreak, loadContrast, saveContrast, type Stats as StatsData } from '../storage'
-import { starsFor } from '../../journey/progress'
+import { difficultyOf, type Difficulty } from '../../journey/levels'
+import { loadJourney, pointsFor, starsFor, totalPoints } from '../../journey/progress'
 import { applyContrast, BAND, INK, MARK_BG } from '../theme'
 import { ChunkyButton, PosterWord, Toggle } from './Bits'
 import { Meter, Tile } from './Tile'
@@ -227,7 +228,7 @@ function useCountdown() {
   return { text, live }
 }
 
-export function ResultPanel({ game, answer: revealed, state, stats, preset, onToast, team, level }: {
+export function ResultPanel({ game, answer: revealed, state, stats, preset, onToast, team, level, onHome, onJourney }: {
   game: Game
   answer?: WordEntry
   state: GameState
@@ -235,7 +236,11 @@ export function ResultPanel({ game, answer: revealed, state, stats, preset, onTo
   preset: MotionPreset
   onToast(t: string): void
   team?: { crew: string; link: string }
-  level?: { n: number; isLast: boolean; onNext(): void; onRetry(): void; onMap(): void }
+  level?: { n: number; isLast: boolean; difficulty: Difficulty; onNext(): void; onRetry(): void; onMap(): void }
+  /** Every results sheet has a way home. */
+  onHome?(): void
+  /** The daily drop also points you at the Journey. */
+  onJourney?(): void
 }) {
   const countdown = useCountdown()
   const [today] = useState(() => new Date().toISOString().slice(0, 10))
@@ -260,6 +265,7 @@ export function ResultPanel({ game, answer: revealed, state, stats, preset, onTo
           : `You used all ${max} tries. The word was`
   const headline = won ? (level?.isLast ? 'CHAMPION' : 'SOLVED') : state.endReason === 'time' ? 'TIME’S UP' : state.endReason === 'ended' ? 'GAME ENDED' : 'NOT TODAY'
   const stars = starsFor(state, setup)
+  const points = level ? pointsFor(level.n, state, setup, level.difficulty) : 0
 
   const onShare = async () => {
     const r = await share(shareText(puzzle, rule, state, max, team))
@@ -302,6 +308,13 @@ export function ResultPanel({ game, answer: revealed, state, stats, preset, onTo
       {level && finished ? (
         <motion.div className="practice-box" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
           {won && <StarRow stars={stars} />}
+          {won && (
+            <p className="points-line">
+              <strong>+{points.toLocaleString()}</strong> points on {difficultyOf(level.difficulty).name}
+              <span> · {totalPoints(loadJourney()).toLocaleString()} total</span>
+            </p>
+          )}
+          {won && level.difficulty === 'easy' && <p className="result-note">Play it on Scholar, without the clue, for 1.6× points.</p>}
           {won ? (
             level.isLast ? (
               <p className="result-note">You’ve finished the Journey. Replay any level for more stars.</p>
@@ -345,6 +358,20 @@ export function ResultPanel({ game, answer: revealed, state, stats, preset, onTo
           </div>
         )}
       </div>
+      {finished && (onJourney || (onHome && !level)) && (
+        <div className="result-more">
+          {onJourney && (
+            <ChunkyButton onClick={onJourney} variant="paper" className="result-journey">
+              Play the Journey
+            </ChunkyButton>
+          )}
+          {onHome && !level && (
+            <button type="button" className="link-btn result-home" onClick={onHome}>
+              Back to home
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

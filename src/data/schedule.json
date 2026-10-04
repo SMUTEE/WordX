@@ -1,0 +1,10 @@
+{
+  "epoch": "2026-01-01",
+  "rotation": ["standard", "category", "anagram", "decay", "fog", "vowel", "naija"],
+  "overrides": {
+    "2026-10-03T00": { "rule": "fog" }
+  },
+  "flags": {
+    "liar": false
+  }
+}

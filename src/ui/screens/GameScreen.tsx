@@ -14,7 +14,8 @@ import { PRESETS } from '../motion/presets'
 import { navigate } from '../router'
 import { hasSeenHelp, loadTimerPref, markSeenHelp, saveTimerPref } from '../storage'
 import { Clock, GiveUpPanel, TimerPicker } from '../components/Clock'
-import type { LevelDef } from '../../journey/levels'
+import type { Difficulty, LevelDef } from '../../journey/levels'
+import { ClueCard, DifficultyPicker } from '../components/Difficulty'
 import type { GameState } from '../../engine/types'
 import type { WordEntry } from '../../data/words'
 import { inkColor, softInk } from '../theme'
@@ -27,6 +28,11 @@ import { Chrome, TopBar } from './Chrome'
 export interface LevelProps {
   def: LevelDef
   isLast: boolean
+  difficulty: Difficulty
+  /** Set until the first guess; after that the difficulty is fixed for this word. */
+  onDifficulty?(d: Difficulty): void
+  /** Easy mode's clue to the word. */
+  clue?: string
   onFinished(state: GameState): void
   onNext(): void
   onRetry(): void
@@ -191,7 +197,7 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
             <motion.main key="intro" className="intro" exit={{ opacity: 0, y: 40, transition: { duration: 0.3 } }}>
               <TopBar puzzleNo={puzzle.number} slot={puzzle.slot} badge={badge} onBack={() => navigate(home)} />
               <motion.span className="kicker" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
-                {level ? `Level ${level.def.n} · ${level.def.title}` : coop ? 'Team game · rule' : 'This drop’s rule'}
+                {level ? `Level ${level.def.n} · ${level.def.title} · the rule is` : coop ? 'Team game · today’s rule is' : 'Today’s rule is'}
               </motion.span>
               <motion.h1 layoutId="rule-title" className="intro-title">
                 <PosterWord text={p.name.toUpperCase()} delay={0.45} />
@@ -199,6 +205,9 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
               <motion.div className="rule thick" initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ delay: 0.75, duration: 0.6, ease: [0.7, 0, 0.2, 1] }} />
               <motion.p className="intro-tagline" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.9 }}>
                 {p.tagline}
+              </motion.p>
+              <motion.p className="rule-explainer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.0 }}>
+                <strong>{p.name}</strong> is the rule for this game. It changes how you play. It’s not a clue to the word.
               </motion.p>
               {coop && (
                 <motion.div className="relay-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1 }}>
@@ -252,6 +261,11 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
                   <li>{setup.maxHints ? `${setup.maxHints} hint${setup.maxHints > 1 ? 's' : ''}` : 'No hints'}</li>
                 </motion.ul>
               )}
+              {level?.onDifficulty && fresh && g.state.status === 'playing' && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.3 }}>
+                  <DifficultyPicker value={level.difficulty} onChange={level.onDifficulty} />
+                </motion.div>
+              )}
               {!coop && fresh && g.state.status === 'playing' && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.35 }}>
                   <TimerPicker value={timerPick} onChange={setTimerPick} />
@@ -278,7 +292,10 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
                 onInvite={coop ? () => setSheet('invite') : undefined}
               />
               <div className="title-row">
-                <motion.h1 layoutId="rule-title" className="game-title">
+                <motion.h1 layoutId="rule-title" className="game-title" aria-label={`Rule: ${p.name}`}>
+                  <span className="rule-label" aria-hidden="true">
+                    {level ? `Level ${level.def.n} · rule` : 'Today’s rule'}
+                  </span>
                   {p.name.toUpperCase()}
                 </motion.h1>
                 <span
@@ -336,6 +353,7 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
                 <Legend items={p.legend} entering={entering} />
                 {sheet === 'none' && <ToastHost className="toast-inline" toast={g.toast} onDone={clearToast} />}
               </div>
+              {level?.clue && g.state.status === 'playing' && <ClueCard clue={level.clue} />}
               {g.state.status === 'playing' && <HintBar hints={g.hints} status={g.hintStatus} onHint={g.takeHint} />}
               <HintPanel hint={setup.hint} typed={g.current.filter((_, i) => !g.locks[i])} onLetter={g.onKey} />
               <Board
@@ -352,6 +370,7 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
                 emptyBorder={softInk(p.theme)}
                 rowLabels={rowLabels}
                 ghost={!!ghost}
+                onTileTap={g.clearAt}
               />
               {youGaveUp && g.revealingRow === null ? (
                 <motion.div className="done-bar" initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }}>
@@ -392,9 +411,14 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
                       : endLine}
                     {g.state.status === 'lost' && <strong className="done-answer">{answer.word}</strong>}
                   </p>
-                  <ChunkyButton onClick={() => setSheet('result')} variant="paper">
-                    See results
-                  </ChunkyButton>
+                  <div className="done-actions">
+                    <ChunkyButton onClick={() => setSheet('result')} variant="paper">
+                      See results
+                    </ChunkyButton>
+                    <button type="button" className="link-btn" onClick={() => navigate(home)}>
+                      {level ? 'Back to the map' : 'Back to home'}
+                    </button>
+                  </div>
                 </motion.div>
               )}
             </motion.main>
@@ -416,7 +440,9 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
           preset={preset}
           onToast={g.say}
           team={coop && room ? { crew, link: `${location.origin}/room/${room.code}` } : undefined}
-          level={level ? { n: level.def.n, isLast: level.isLast, onNext: level.onNext, onRetry: level.onRetry, onMap: () => navigate('/journey') } : undefined}
+          level={level ? { n: level.def.n, isLast: level.isLast, difficulty: level.difficulty, onNext: level.onNext, onRetry: level.onRetry, onMap: () => navigate('/journey') } : undefined}
+          onHome={() => navigate('/')}
+          onJourney={drop ? () => navigate('/journey') : undefined}
         />
       </Sheet>
       <Sheet open={sheet === 'help'} onClose={closeSheet} label="How to play">

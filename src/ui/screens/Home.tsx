@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import type { Game } from '../../engine/engine'
 import { msUntilNextDrop } from '../../engine/schedule'
 import { LEVEL_COUNT, levelDef } from '../../journey/levels'
-import { journeyComplete, loadJourney, totalStars } from '../../journey/progress'
+import { journeyComplete, loadJourney, totalPoints, totalStars } from '../../journey/progress'
 import { getMe } from '../../net/identity'
 import { restoreFromCode, saveCode, scheduleBackup } from '../../net/sync'
 import { normalizeCode, ROOM_CODE_LENGTH } from '../../net/protocol'
@@ -231,6 +231,9 @@ export function Home({ game }: { game: Game }) {
             <span>
               <strong>{totalStars(journey)}</strong> ★
             </span>
+            <span>
+              <strong>{totalPoints(journey).toLocaleString()}</strong> pts
+            </span>
           </span>
         </motion.button>
 
@@ -249,7 +252,7 @@ export function Home({ game }: { game: Game }) {
               <span className="mode-status">{dropStatus}</span>
             </span>
             <span className="mode-desc">
-              This drop’s rule is <strong>{drop.name}</strong>. Same word for everyone. New one in {countdown}.
+              Today’s rule: <strong>{drop.name}</strong>. {drop.tagline} Same word for everyone. New one in {countdown}.
             </span>
             <span className="mode-go" aria-hidden="true">
               →
@@ -349,6 +352,7 @@ export function Home({ game }: { game: Game }) {
               ['Best', streak.best],
               ['Played', streak.totalPlayed],
               ['Stars', totalStars(journey)],
+              ['Points', totalPoints(journey).toLocaleString()],
             ].map(([label, value]) => (
               <div className="stat" key={label}>
                 <span className="stat-value">{value}</span>

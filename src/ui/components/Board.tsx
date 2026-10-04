@@ -21,6 +21,8 @@ interface BoardProps {
   rowLabels?: string[]
   /** The open row shows a friend's live typing, not yours. */
   ghost?: boolean
+  /** Tapping a typed letter in the open row clears it. */
+  onTileTap?(col: number): void
 }
 
 const GAP = 6
@@ -82,7 +84,7 @@ interface RowProps extends BoardProps {
   meter: boolean
 }
 
-function Row({ row, size, guess, isCurrent, meter, setup, current, currentLocks, revealingRow, celebrateRow, shakeNonce, entering, preset, emptyBorder, rowLabels, ghost }: RowProps) {
+function Row({ row, size, guess, isCurrent, meter, setup, current, currentLocks, revealingRow, celebrateRow, shakeNonce, entering, preset, emptyBorder, rowLabels, ghost, onTileTap }: RowProps) {
   const [scope, animate] = useAnimate<HTMLDivElement>()
   const reduce = useReducedMotion()
 
@@ -127,6 +129,7 @@ function Row({ row, size, guess, isCurrent, meter, setup, current, currentLocks,
             entering={entering}
             size={size}
             emptyBorder={emptyBorder}
+            onTap={isCurrent && !ghost && status === 'typed' && onTileTap ? () => onTileTap(c) : undefined}
           />
         )
       })}
