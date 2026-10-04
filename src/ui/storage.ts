@@ -140,6 +140,9 @@ export function streakSummary(today = localDay()): StreakSummary {
   return { current, best: Math.max(best, current), playedToday: played(today), week, totalPlayed: totals.p, totalWon: totals.w }
 }
 
+/** Has seen the how-it-works page (first visit shows it before anything else). */
+export const hasSeenIntro = () => read<boolean>('seen-intro') === true
+export const markSeenIntro = () => write('seen-intro', true)
 export const hasOnboarded = () => read<boolean>('onboarded') === true
 export const markOnboarded = () => write('onboarded', true)
 

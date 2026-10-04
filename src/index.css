@@ -695,3 +695,39 @@ html[data-contrast='high'] .swatch-correct { border-radius: 50%; }
 @media (prefers-reduced-motion: reduce) {
   .credit-pop { animation: credit-fade 200ms ease-out both; }
 }
+
+/* ---------- How it works (/how-to-play) ---------- */
+.how { min-height: 100dvh; background: #F4F1EA; color: #111; padding: 16px max(16px, calc((100% - 528px) / 2)) 120px; display: grid; gap: 18px; align-content: start; }
+.how-top { display: flex; align-items: center; gap: 12px; }
+.how-back { color: #111; }
+.how-hero { display: grid; gap: 8px; margin-top: 8px; }
+.how-title { margin: 0; display: grid; font-size: clamp(54px, 17vw, 88px); font-weight: 900; font-stretch: 68%; letter-spacing: -0.045em; line-height: 0.86; }
+.how-lede { margin: 6px 0 0; font-size: 19px; font-weight: 800; line-height: 1.2; text-wrap: balance; }
+.how-block { background: #fff; border: 2px solid #111; border-bottom-width: 6px; border-radius: 18px; padding: 16px; display: grid; gap: 10px; }
+.how-block p { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.45; }
+.how-step { margin: 0; display: flex; align-items: center; gap: 10px; font-size: 26px; font-weight: 900; font-stretch: 75%; letter-spacing: -0.02em; line-height: 1; }
+.how-n { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: #111; color: #fff; font-size: 18px; flex: none; }
+.how-example { display: flex; justify-content: center; padding: 6px 0; }
+.how-legend, .how-tips { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 15px; font-weight: 600; }
+.how-legend li { display: flex; align-items: center; gap: 8px; }
+.how-legend strong { width: 58px; font-weight: 900; }
+.how-swatch { width: 18px; height: 18px; border-radius: 5px; border: 2px solid #111; flex: none; }
+.how-small { font-size: 13px !important; opacity: 0.7; }
+.how-rules { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.how-rule { border: 2px solid #111; border-bottom-width: 4px; border-radius: 12px; padding: 10px; display: grid; gap: 3px; align-content: start; }
+.how-rule strong { font-size: 20px; font-weight: 900; font-stretch: 75%; text-transform: uppercase; letter-spacing: -0.01em; }
+.how-rule span { font-size: 12px; font-weight: 700; line-height: 1.3; }
+.how-modes { display: grid; gap: 10px; }
+.how-mode { border: 2px solid #111; border-bottom-width: 4px; border-radius: 14px; padding: 12px 14px; display: grid; gap: 4px; }
+.how-mode strong { font-size: 22px; font-weight: 900; font-stretch: 75%; }
+.how-mode p { font-size: 14px !important; }
+.how-mode-drop { background: #2E5BFF; color: #fff; }
+.how-mode-journey { background: #FFD21F; }
+.how-mode-friends { background: #111; color: #fff; }
+.how-tips li { padding-left: 2px; }
+.how-foot { display: grid; justify-items: center; }
+.how-cta {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, #F4F1EA 70%, rgba(244,241,234,0)); display: flex; justify-content: center;
+}
+.how-cta .play-btn { width: 100%; max-width: 528px; }

@@ -12,7 +12,7 @@ import { registry } from '../../rules'
 import { ChunkyButton, PosterWord, Sheet, Toggle, ToastHost } from '../components/Bits'
 import { CreateGamePanel } from '../components/Coop'
 import { UsernameClaim } from '../components/Username'
-import { HelpPanel, ResultPanel } from '../components/Panels'
+import { ResultPanel } from '../components/Panels'
 import { formatDrop } from '../format'
 import { PRESETS } from '../motion/presets'
 import { navigate } from '../router'
@@ -107,7 +107,7 @@ export function Home({ game }: { game: Game }) {
   const countdown = useDropCountdown()
   const [me, setMe] = useState(getMe)
   // Everyone needs a username: new players on first visit, and players from before usernames existed.
-  const [sheet, setSheet] = useState<'none' | 'welcome' | 'create' | 'help' | 'stats' | 'profile'>(() => (hasOnboarded() && getMe().claimed ? 'none' : 'welcome'))
+  const [sheet, setSheet] = useState<'none' | 'welcome' | 'create' | 'stats' | 'profile'>(() => (hasOnboarded() && getMe().claimed ? 'none' : 'welcome'))
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
@@ -138,9 +138,12 @@ export function Home({ game }: { game: Game }) {
     scheduleBackup()
   }
 
+  // Arriving from the how-it-works page's "Play game": once you have a name, straight into today's drop.
+  const [starting] = useState(() => new URLSearchParams(location.search).has('start'))
   const finishWelcome = () => {
     markOnboarded()
     setSheet('none')
+    if (starting) navigate('/play', { replace: true })
   }
 
   const create = async (ruleId: string, minutes: number | null, turnSeconds: number | null) => {
@@ -166,7 +169,6 @@ export function Home({ game }: { game: Game }) {
     .all()
     .filter((r) => r.id !== 'liar')
     .map((r) => ({ id: r.id, name: r.presentation.name, bg: r.presentation.theme.bg }))
-  const practice = registry.all().map((r) => ({ id: r.id, name: r.presentation.name, bg: r.presentation.theme.bg }))
   const rise = (delay: number) => ({ initial: { opacity: 0, y: 24 }, animate: { opacity: 1, y: 0 }, transition: { delay, type: 'spring' as const, stiffness: 300, damping: 24 } })
 
   return (
@@ -178,7 +180,7 @@ export function Home({ game }: { game: Game }) {
           </span>
           <span className="topbar-meta" />
           <span className="topbar-actions">
-            <motion.button type="button" className="icon-btn" aria-label="How to play" onClick={() => setSheet('help')} whileTap={{ y: 3 }}>
+            <motion.button type="button" className="icon-btn" aria-label="How to play" onClick={() => navigate('/how-to-play')} whileTap={{ y: 3 }}>
               ?
             </motion.button>
             <motion.button type="button" className="icon-btn avatar-btn" aria-label="Your profile" onClick={() => setSheet('profile')} whileTap={{ y: 3 }}>
@@ -320,17 +322,12 @@ export function Home({ game }: { game: Game }) {
       <ToastHost toast={toast} onDone={() => setToast(null)} />
       <Sheet open={sheet === 'welcome'} onClose={finishWelcome} label="Welcome">
         <div className="help">
-          <span className="kicker">Welcome to WordX</span>
-          <PosterWord text="HELLO" className="help-word" />
-          <p className="help-tagline">You know how to play. You don’t know the rule.</p>
-          <ol className="help-list">
-            <li>Guess the hidden word. Colours tell you how close you are.</li>
-            <li>Every day a new drop arrives with a new rule.</li>
-            <li>Climb the Journey, or play live with friends.</li>
-          </ol>
-          <p className="result-note">Pick a unique username. Friends see it when you play together, and your progress is saved with it on this device.</p>
+          <span className="kicker">One last thing</span>
+          <PosterWord text="YOUR NAME" className="help-word" />
+          <p className="help-tagline">Pick a unique username.</p>
+          <p className="result-note">Friends see it when you play together, and your streak and progress are saved with it on this device.</p>
           <UsernameClaim
-            cta="Claim it and start playing"
+            cta={starting ? 'Claim it and play' : 'Claim it and start playing'}
             onClaimed={() => {
               onClaimed()
               finishWelcome()
@@ -377,9 +374,6 @@ export function Home({ game }: { game: Game }) {
       </Sheet>
       <Sheet open={sheet === 'create'} onClose={() => setSheet('none')} label="Play with friends">
         <CreateGamePanel username={me.claimed ? me.name : null} onClaimed={onClaimed} rules={rules} defaultRule={rule.id === 'liar' ? 'standard' : rule.id} busy={busy} onCreate={create} />
-      </Sheet>
-      <Sheet open={sheet === 'help'} onClose={() => setSheet('none')} label="How to play">
-        <HelpPanel game={game} preset={PRESETS[drop.motion]} rules={practice} />
       </Sheet>
       <Sheet open={sheet === 'stats'} onClose={() => setSheet('none')} label="Stats">
         <ResultPanel game={game} state={session ?? game.newState()} stats={loadStats()} preset={PRESETS[drop.motion]} onToast={say} />

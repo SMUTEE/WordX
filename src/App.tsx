@@ -11,7 +11,13 @@ import { DropScreen } from './ui/screens/DropScreen'
 import { Home } from './ui/screens/Home'
 import { JourneyMap, LevelScreen } from './ui/screens/Journey'
 import { RoomScreen } from './ui/screens/RoomScreen'
+import { HowToPlay } from './ui/screens/HowToPlay'
 import { trackOpen } from './net/track'
+import { getMe } from './net/identity'
+import { hasOnboarded, hasSeenIntro } from './ui/storage'
+
+/** Never seen the how-it-works page and never finished setting up. */
+const isFirstVisit = () => !hasSeenIntro() && !(hasOnboarded() && getMe().claimed)
 
 // The stats page is only for the owner: loaded on demand, never in the game's bundle.
 const AdminScreen = lazy(() => import('./ui/screens/Admin'))
@@ -43,12 +49,19 @@ export default function App() {
     navigate(`/play${location.search}`, { replace: true })
     return null
   }
+  // First visit: how it works comes before anything else.
+  // (Shown in place, with the address updated: the router isn't listening yet on the first render.)
+  if (route.name === 'home' && !location.search && isFirstVisit()) {
+    history.replaceState(null, '', '/how-to-play')
+    return <HowToPlay />
+  }
   if (route.name === 'admin')
     return (
       <Suspense fallback={null}>
         <AdminScreen />
       </Suspense>
     )
+  if (route.name === 'how') return <HowToPlay />
   if (route.name === 'room') return <RoomScreen key={route.code} code={route.code} />
   if (route.name === 'journey') return <JourneyMap />
   if (route.name === 'level') return <LevelScreen key={route.n} n={route.n} />
