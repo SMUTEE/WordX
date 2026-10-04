@@ -7,6 +7,7 @@ import { registry } from '../../rules'
 import { PosterWord, ToastHost } from '../components/Bits'
 import { StarRow } from '../components/Panels'
 import { navigate } from '../router'
+import { Credit } from '../components/Credit'
 import { loadSession } from '../storage'
 import type { Toast } from '../useGame'
 import { Chrome } from './Chrome'
@@ -155,6 +156,7 @@ export function JourneyMap() {
         <p className="journey-foot">
           {LEVELS.reduce((n, d) => n + poolSize(d), 0).toLocaleString()} words across the {LEVEL_COUNT} levels, shuffled differently for every player.
         </p>
+        <Credit className="credit-on-dark" />
       </main>
       <ToastHost toast={toast} onDone={() => setToast(null)} />
     </Chrome>

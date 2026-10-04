@@ -9,6 +9,7 @@ import { Store } from './db'
 import { Hub, type Peer } from './hub'
 import { Room, RoomError, hashSecret, newRoomRecord, randomCode } from './rooms'
 import { applyClaim, checkClaimRequest, isAvailable, type ClaimRequest } from './usernames'
+import { computeStats, eventFromClient, recordEvent, roomMilestone, sameKey, serverEvent, type EventRow } from './stats'
 
 export interface ServerOptions {
   port: number
@@ -19,6 +20,8 @@ export interface ServerOptions {
   turnGraceSeconds?: number
   /** Secret mixed into daily-drop answers. Set WORDX_DROP_SALT in production. */
   dropSalt?: string
+  /** Unlocks the stats page (/admin). Without it, stats can be recorded but not read. */
+  adminKey?: string
   log?: (...args: unknown[]) => void
 }
 
@@ -69,6 +72,10 @@ export function startServer(opts: ServerOptions): { server: Server; close(): Pro
   const createHits = new Map<string, number[]>()
   const grace = (opts.turnGraceSeconds ?? 20) * 1000
   const salt = opts.dropSalt ?? 'dev-drop-salt'
+  /** Stats never break the game: failures are logged and dropped. */
+  const track = (e: EventRow | null) => {
+    if (e) recordEvent(store.statsDb, e).catch((err) => log('stats', err))
+  }
 
   // ---------- Rooms in memory ----------
 
@@ -92,7 +99,10 @@ export function startServer(opts: ServerOptions): { server: Server; close(): Pro
             void live.hub.tick()
           }, Math.max(0, at - Date.now()))
         },
-        log,
+        log: (...args: unknown[]) => {
+          log(...args)
+          track(roomMilestone(String(args[0]), live.hub.room))
+        },
       },
       grace,
     )
@@ -145,6 +155,25 @@ export function startServer(opts: ServerOptions): { server: Server; close(): Pro
   async function handleApi(req: IncomingMessage, res: ServerResponse, path: string) {
     if (req.method === 'GET' && path === '/api/health') {
       return json(res, 200, { ok: true, live: lives.size, ...store.stats() })
+    }
+
+    if (req.method === 'POST' && path === '/api/event') {
+      let body: unknown
+      try {
+        body = JSON.parse((await readBody(req)) || '{}')
+      } catch {
+        return json(res, 400, { error: 'Bad request' })
+      }
+      const e = eventFromClient(body)
+      if ('error' in e) return json(res, 400, e)
+      track(e)
+      res.writeHead(204).end()
+      return
+    }
+    if (req.method === 'GET' && path === '/api/admin/stats') {
+      const given = String(req.headers.authorization ?? '').replace(/^Bearer\s+/i, '')
+      if (!sameKey(given, opts.adminKey)) return json(res, 401, { error: 'Wrong key' })
+      return json(res, 200, await computeStats(store.statsDb))
     }
 
     if (path === '/api/drop' && req.method === 'GET') {
@@ -221,6 +250,7 @@ export function startServer(opts: ServerOptions): { server: Server; close(): Pro
       if ('error' in made) return json(res, 400, { error: made.error })
       store.createRoom(made.record)
       log('room created', code, made.record.ruleId)
+      if (made.record.creatorId) track(serverEvent('room_created', made.record.creatorId, Date.now(), { ref: code, rule: made.record.ruleId, mode: 'friends' }))
       return json(res, 201, { code })
     }
 

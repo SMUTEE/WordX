@@ -10,7 +10,7 @@ const PORT = 18_787
 let app: ReturnType<typeof startServer>
 
 beforeAll(() => {
-  app = startServer({ port: PORT, dbPath: ':memory:', turnGraceSeconds: 0.2, log: () => {} })
+  app = startServer({ port: PORT, dbPath: ':memory:', turnGraceSeconds: 0.2, log: () => {}, adminKey: 'test-admin-key' })
 })
 afterAll(() => app.close())
 
@@ -451,5 +451,58 @@ describe('room rules', () => {
     const room = new Room(record())
     for (let i = 0; i < 8; i++) expect(room.join(`player${i}`, 'secret-secret-secret', `P${i}`, 0).ok).toBe(true)
     expect(room.join('player9', 'secret-secret-secret', 'P9', 0)).toMatchObject({ ok: false, code: 'full' })
+  })
+})
+
+describe('usage stats', () => {
+  const event = (body: object) => fetch(`http://localhost:${PORT}/api/event`, { method: 'POST', body: JSON.stringify(body) })
+  const stats = (key?: string) => fetch(`http://localhost:${PORT}/api/admin/stats`, { headers: key ? { authorization: `Bearer ${key}` } : {} })
+
+  it('keeps the stats page behind the admin key', async () => {
+    expect((await stats()).status).toBe(401)
+    expect((await stats('wrong-key-wrong-k')).status).toBe(401)
+    expect((await stats('test-admin-key')).status).toBe(200)
+  })
+
+  it('refuses events it does not expect', async () => {
+    expect((await event({ kind: 'drop-tables', player: 'statsplayer1' })).status).toBe(400)
+    expect((await event({ kind: 'open', player: 'NOT A PLAYER' })).status).toBe(400)
+    // A server-only event can't be faked by the app.
+    expect((await event({ kind: 'room_created', player: 'statsplayer1' })).status).toBe(400)
+  })
+
+  it('counts players, games and points, and a game reported twice only once', async () => {
+    const before = (await (await stats('test-admin-key')).json()) as { totals: { players: number; gamesFinished: number } }
+    expect((await event({ kind: 'open', player: 'statsplayer1', name: 'stat_one' })).status).toBe(204)
+    const win = { kind: 'finish', player: 'statsplayer1', ref: 'journey:3:0', mode: 'journey', rule: 'category', level: 3, difficulty: 'scholar', result: 'won', tries: 3, maxTries: 6, hints: 0, points: 290 }
+    await event(win)
+    await event(win)
+    await event({ kind: 'finish', player: 'statsplayer2', ref: '2026-10-04T00|decay@1', mode: 'drop', rule: 'decay', result: 'lost', reason: 'gave-up', tries: 2, maxTries: 6 })
+    await settle(50)
+    const s = (await (await stats('test-admin-key')).json()) as {
+      totals: { players: number; named: number; gamesFinished: number; activeToday: number }
+      journey: { topPoints: { name: string; points: number }[]; difficulty: { difficulty: string; games: number }[] }
+      drop: { plays: number; gaveUp: number }[]
+      rules: { rule: string }[]
+    }
+    expect(s.totals.players).toBe(before.totals.players + 2)
+    expect(s.totals.gamesFinished).toBe(before.totals.gamesFinished + 2)
+    expect(s.totals.activeToday).toBeGreaterThanOrEqual(2)
+    expect(s.journey.topPoints[0]).toMatchObject({ name: 'stat_one', points: 290 })
+    expect(s.journey.difficulty).toEqual([{ difficulty: 'scholar', games: 1, won: 1 }])
+    expect(s.drop[0]).toMatchObject({ plays: 1, gaveUp: 1 })
+    expect(s.rules.map((r) => r.rule).sort()).toEqual(['category', 'decay'])
+  })
+
+  it('records friends games from the server: created, a friend joined, finished', async () => {
+    const { ada, friend } = await startedGame('stats')
+    ada.send({ t: 'end' })
+    await settle(150)
+    const s = (await (await stats('test-admin-key')).json()) as { friends: { created: number; started: number; finished: { reason: string; n: number }[] } }
+    expect(s.friends.created).toBeGreaterThanOrEqual(1)
+    expect(s.friends.started).toBeGreaterThanOrEqual(1)
+    expect(s.friends.finished.find((f) => f.reason === 'ended')?.n).toBeGreaterThanOrEqual(1)
+    ada.close()
+    friend.close()
   })
 })

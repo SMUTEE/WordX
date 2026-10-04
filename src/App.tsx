@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { Suspense, lazy, useEffect, useMemo } from 'react'
 import schedule from './data/schedule.json'
 import { defaultDictionary } from './engine/dictionary'
 import { createGame, type Game } from './engine/engine'
@@ -11,6 +11,10 @@ import { DropScreen } from './ui/screens/DropScreen'
 import { Home } from './ui/screens/Home'
 import { JourneyMap, LevelScreen } from './ui/screens/Journey'
 import { RoomScreen } from './ui/screens/RoomScreen'
+import { trackOpen } from './net/track'
+
+// The stats page is only for the owner: loaded on demand, never in the game's bundle.
+const AdminScreen = lazy(() => import('./ui/screens/Admin'))
 
 /** This drop's puzzle, or a practice one picked with ?rule= / ?slot= / ?date=. */
 function soloGame(search: string): Game | null {
@@ -30,12 +34,21 @@ export default function App() {
   const route = useRoute()
   const search = route.name === 'play' ? location.search : ''
   const game = useMemo(() => soloGame(search), [search])
+  useEffect(() => {
+    if (route.name !== 'admin') trackOpen()
+  }, [route.name])
 
   // Old links like /?rule=fog go straight to that game.
   if (route.name === 'home' && /[?&](rule|slot|date)=/.test(location.search)) {
     navigate(`/play${location.search}`, { replace: true })
     return null
   }
+  if (route.name === 'admin')
+    return (
+      <Suspense fallback={null}>
+        <AdminScreen />
+      </Suspense>
+    )
   if (route.name === 'room') return <RoomScreen key={route.code} code={route.code} />
   if (route.name === 'journey') return <JourneyMap />
   if (route.name === 'level') return <LevelScreen key={route.n} n={route.n} />

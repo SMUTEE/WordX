@@ -13,6 +13,8 @@ const app = startServer({
   // In production the same process serves the built app; in development Vite does.
   staticDir: production && existsSync(dist) ? dist : undefined,
   dropSalt: process.env.WORDX_DROP_SALT,
+  // Local development opens /admin with 'dev-admin-key'; production needs WORDX_ADMIN_KEY.
+  adminKey: process.env.WORDX_ADMIN_KEY ?? (production ? undefined : 'dev-admin-key'),
 })
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

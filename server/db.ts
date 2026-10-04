@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite'
 import type { ProfileRecord } from './profiles'
 import type { UsernameRecord } from './usernames'
 import type { GuessRecord, PlayerRecord, RoomRecord } from './rooms'
+import { STATS_SCHEMA, type Sql } from './stats'
 
 /** Newer room fields, kept in one JSON column so adding more never needs a migration. */
 const extra = (r: RoomRecord) =>
@@ -14,11 +15,19 @@ const extra = (r: RoomRecord) =>
  * only the words are stored, and each room re-derives its puzzle and feedback on load.
  */
 export class Store {
+  /** The usage-stats tables, through the shared SQL interface (server/stats.ts). */
+  readonly statsDb: Sql
   private db: DatabaseSync
 
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
     this.db = new DatabaseSync(path)
+    this.db.exec(STATS_SCHEMA)
+    const db = this.db
+    this.statsDb = {
+      all: async <T,>(sql: string, params: unknown[] = []) => db.prepare(sql).all(...(params as never[])) as T[],
+      run: async (sql: string, params: unknown[] = []) => void db.prepare(sql).run(...(params as never[])),
+    }
     this.db.exec(`
       PRAGMA journal_mode = WAL;
       PRAGMA foreign_keys = ON;

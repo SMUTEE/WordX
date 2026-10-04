@@ -6,6 +6,7 @@ import { applyClaim, checkClaimRequest, isAvailable, type ClaimRequest, type Use
 import { hashSecret } from '../server/rooms'
 import { Hub, type Peer } from '../server/hub'
 import { Room, RoomError, newRoomRecord, randomCode, type RoomRecord } from '../server/rooms'
+import { computeStats, eventFromClient, recordEvent, roomMilestone, sameKey, serverEvent, type EventKind, type EventRow, type Sql } from '../server/stats'
 
 /**
  * WordX on Cloudflare. The Worker serves the built app and routes the API; every friends
@@ -19,6 +20,10 @@ export interface Env {
   ASSETS: Fetcher
   /** Secret for daily-drop answers: `npx wrangler secret put DROP_SALT`. */
   DROP_SALT?: string
+  /** Anonymous usage events for the stats page. */
+  STATS?: D1Database
+  /** Unlocks /admin: `npx wrangler secret put ADMIN_KEY`. */
+  ADMIN_KEY?: string
 }
 
 const GRACE_MS = 20_000
@@ -32,12 +37,49 @@ const json = (status: number, body: unknown) =>
 
 const roomStub = (env: Env, code: string) => env.ROOMS.get(env.ROOMS.idFromName(code))
 
+const d1 = (db: D1Database): Sql => ({
+  all: async <T,>(sql: string, params: unknown[] = []) => (await db.prepare(sql).bind(...params).all()).results as T[],
+  run: async (sql: string, params: unknown[] = []) => void (await db.prepare(sql).bind(...params).run()),
+})
+
+/** Stats must never break the game: failures are logged and dropped. */
+async function track(env: Env, e: EventRow) {
+  if (!env.STATS) return
+  try {
+    await recordEvent(d1(env.STATS), e)
+  } catch (err) {
+    console.error('stats', err)
+  }
+}
+const trackServer = (env: Env, kind: EventKind, player: string, fields: Partial<EventRow> = {}) => track(env, serverEvent(kind, player, Date.now(), fields))
+
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
     const path = url.pathname
 
     if (path === '/api/health') return json(200, { ok: true, runtime: 'cloudflare' })
+
+    if (path === '/api/event' && request.method === 'POST') {
+      const text = await request.text()
+      if (text.length > MAX_BODY) return json(413, { error: 'Too large' })
+      let body: unknown
+      try {
+        body = JSON.parse(text || '{}')
+      } catch {
+        return json(400, { error: 'Bad request' })
+      }
+      const e = eventFromClient(body)
+      if ('error' in e) return json(400, e)
+      ctx.waitUntil(track(env, e))
+      return new Response(null, { status: 204 })
+    }
+    if (path === '/api/admin/stats' && request.method === 'GET') {
+      const given = (request.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '')
+      if (!sameKey(given, env.ADMIN_KEY)) return json(401, { error: 'Wrong key' })
+      if (!env.STATS) return json(503, { error: 'Stats database not configured' })
+      return json(200, await computeStats(d1(env.STATS)))
+    }
 
     if (path === '/api/drop' && request.method === 'GET') {
       if (!env.DROP_SALT) return json(503, { error: 'Daily drop isn’t configured yet' })
@@ -123,7 +165,10 @@ export default {
         const made = newRoomRecord(code, body, Date.now())
         if ('error' in made) return json(400, { error: made.error })
         const res = await roomStub(env, code).fetch('https://room/init', { method: 'POST', body: JSON.stringify(made.record) })
-        if (res.status === 201) return json(201, { code })
+        if (res.status === 201) {
+          if (made.record.creatorId) ctx.waitUntil(trackServer(env, 'room_created', made.record.creatorId, { ref: code, rule: made.record.ruleId, mode: 'friends' }))
+          return json(201, { code })
+        }
         if (res.status !== 409) return json(500, { error: 'Couldn’t create a game' })
       }
       return json(503, { error: 'Couldn’t create a game. Try again.' })
@@ -174,6 +219,7 @@ export class RoomObject extends DurableObject<Env> {
             await this.ctx.storage.put({ record: r, touched: Date.now() })
           },
           wakeAt: (at) => void this.wakeAt(at),
+          log: (what) => this.roomEvent(String(what)),
         },
         GRACE_MS,
       )
@@ -188,6 +234,12 @@ export class RoomObject extends DurableObject<Env> {
   /** While an alarm runs, wake-up requests are collected here and set once it finishes. */
   private pendingWake: number | null = null
   private inAlarm = false
+
+  /** Friends-game milestones for the stats page (see roomMilestone). */
+  private roomEvent(what: string) {
+    const e = this.hub && roomMilestone(what, this.hub.room)
+    if (e) this.ctx.waitUntil(track(this.env, e))
+  }
 
   private async wakeAt(at: number) {
     if (this.inAlarm) {

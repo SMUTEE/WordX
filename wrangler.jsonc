@@ -23,5 +23,7 @@
     { "tag": "v2", "new_sqlite_classes": ["ProfileObject"] },
     { "tag": "v3", "new_sqlite_classes": ["UsernameObject"] }
   ],
+  // Anonymous usage events for the private stats page (/admin).
+  "d1_databases": [{ "binding": "STATS", "database_name": "wordx-stats", "database_id": "17485e0f-7657-433d-b9eb-8ae9806dc91e", "migrations_dir": "migrations" }],
   "observability": { "enabled": true }
 }

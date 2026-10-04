@@ -21,6 +21,8 @@ import type { WordEntry } from '../../data/words'
 import { inkColor, softInk } from '../theme'
 import { useGame, type RemoteSource } from '../useGame'
 import { roomToState } from '../../net/roomState'
+import { track } from '../../net/track'
+import { pointsFor } from '../../journey/progress'
 import { joinNames } from '../format'
 import { describeGuess } from '../announce'
 import { Chrome, TopBar } from './Chrome'
@@ -88,7 +90,24 @@ export function GameScreen({ game, coop, level, drop }: { game: Game; coop?: Coo
       }
     : drop?.source
 
-  const g = useGame(game, preset, { remote, onFinished: level?.onFinished })
+  // Every finished game is reported once, anonymously, for the stats page.
+  const onFinished = (s: GameState) => {
+    level?.onFinished(s)
+    track('finish', {
+      ref: room ? `room:${room.code}` : puzzle.id,
+      mode: level ? 'journey' : coop ? 'friends' : drop ? 'drop' : 'practice',
+      rule: rule.id,
+      level: level?.def.n,
+      difficulty: level?.difficulty,
+      result: s.status,
+      reason: s.status === 'won' ? undefined : (s.endReason ?? 'tries'),
+      tries: s.guesses.length,
+      maxTries: setup.maxGuesses,
+      hints: s.hints?.length ?? 0,
+      points: level ? pointsFor(level.def.n, s, setup, level.difficulty) : undefined,
+    })
+  }
+  const g = useGame(game, preset, { remote, onFinished })
   const answer = room?.answer ?? drop?.answer ?? puzzle.answer
   const [timerPick, setTimerPick] = useState(loadTimerPref)
   const home = level ? '/journey' : '/'

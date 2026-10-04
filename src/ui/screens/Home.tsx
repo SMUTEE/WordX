@@ -16,6 +16,7 @@ import { HelpPanel, ResultPanel } from '../components/Panels'
 import { formatDrop } from '../format'
 import { PRESETS } from '../motion/presets'
 import { navigate } from '../router'
+import { Credit } from '../components/Credit'
 import { hasOnboarded, loadContrast, loadSession, loadStats, markOnboarded, saveContrast, streakSummary } from '../storage'
 import { applyContrast } from '../theme'
 import type { Toast } from '../useGame'
@@ -313,6 +314,7 @@ export function Home({ game }: { game: Game }) {
         <p className="home-foot">
           Drop {puzzle.number} · started {formatDrop(puzzle.slot)}
         </p>
+        <Credit />
       </main>
 
       <ToastHost toast={toast} onDone={() => setToast(null)} />
